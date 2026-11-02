@@ -46,3 +46,7 @@ Open `index.html` in any modern browser (Chrome or Edge recommended for folder s
 ## Credits
 
 Built by Yuka Gliday (Save the Elephants) through AI-assisted development. Uses [exifr](https://github.com/MikeKovarik/exifr) and [Leaflet](https://leafletjs.com/).
+
+## Licence
+
+MIT, see [LICENSE](LICENSE). Free to use, adapt and share with attribution.
