@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OCCULAR — frame check for oblique camera counts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{
+  --ink:#1B2A33;
+  --ink-60:#5C6B73;
+  --ink-30:#93A0A6;
+  --haze:#EDEFEC;
+  --card:#FFFFFF;
+  --rule:#C9CFCB;
+  --pass:#2E7D5B;
+  --warn:#B8860F;
+  --fail:#A8352F;
+  --unknown:#93A0A6;
+  --pass-bg:#E7F1EC;
+  --warn-bg:#F7EEDA;
+  --fail-bg:#F6E4E2;
+  --shadow:0 1px 0 rgba(27,42,51,.06), 0 8px 24px -18px rgba(27,42,51,.5);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--haze);
+  color:var(--ink);
+  font-family:'IBM Plex Sans',system-ui,-apple-system,Segoe UI,sans-serif;
+  font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px 80px}
+
+/* ---------- placard header ---------- */
+header.placard{
+  border-bottom:1px solid var(--ink);
+  margin-bottom:22px;padding:26px 0 14px;
+}
+.placard-row{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
+h1{
+  font-family:'Barlow Condensed',sans-serif;
+  font-weight:600;font-size:52px;line-height:.9;letter-spacing:.10em;
+  text-transform:uppercase;margin:0;
+}
+h1 span{color:var(--ink-30)}
+.tag{
+  font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;
+  letter-spacing:.22em;font-size:12px;color:var(--ink-60);margin-top:8px;
+}
+.stamp{
+  font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-60);
+  text-align:right;line-height:1.7;
+}
+.stamp b{color:var(--ink);font-weight:600}
+
+/* ---------- generic section ---------- */
+section{margin-bottom:26px}
+.eyebrow{
+  font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;
+  letter-spacing:.2em;font-size:12px;color:var(--ink-60);
+  display:flex;align-items:center;gap:12px;margin:0 0 10px;
+}
+.eyebrow::after{content:"";flex:1;height:1px;background:var(--rule)}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:2px;box-shadow:var(--shadow)}
+
+/* ---------- spec bar ---------- */
+.spec{display:flex;flex-wrap:wrap;gap:0;border:1px solid var(--rule);background:var(--card);border-radius:2px}
+.spec-item{
+  flex:1 1 150px;padding:11px 14px;border-right:1px solid var(--rule);min-width:0;
+}
+.spec-item:last-child{border-right:none}
+.spec-item label{
+  display:block;font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;
+  letter-spacing:.16em;font-size:11px;color:var(--ink-60);margin-bottom:3px;
+}
+.spec-item input,.spec-item select{
+  width:100%;border:none;background:transparent;padding:0;
+  font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:500;color:var(--ink);
+}
+.spec-item input:focus,.spec-item select:focus{outline:2px solid var(--ink);outline-offset:3px}
+.spec-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+
+/* ---------- buttons ---------- */
+button,.btn{
+  font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.14em;
+  font-size:13px;font-weight:500;padding:8px 16px;border-radius:2px;cursor:pointer;
+  border:1px solid var(--ink);background:var(--card);color:var(--ink);
+  transition:background .12s ease,color .12s ease;
+}
+button:hover,.btn:hover{background:var(--ink);color:var(--haze)}
+button.solid{background:var(--ink);color:var(--haze)}
+button.solid:hover{background:#0E1a21}
+button:disabled{opacity:.35;cursor:not-allowed}
+button:focus-visible,.btn:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+button.ghost{border-color:var(--rule);color:var(--ink-60)}
+
+/* ---------- drop zone ---------- */
+#drop{
+  border:1px dashed var(--ink-30);border-radius:2px;background:var(--card);
+  padding:40px 24px;text-align:center;transition:border-color .15s,background .15s;
+}
+#drop.hot{border-color:var(--ink);background:#F7F9F6}
+#drop h2{
+  font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.18em;
+  font-size:20px;font-weight:500;margin:0 0 6px;
+}
+#drop p{color:var(--ink-60);margin:0 0 16px;font-size:13px}
+.drop-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+
+/* ---------- progress ---------- */
+#progress{display:none;margin-top:14px}
+.bar{height:3px;background:var(--rule);overflow:hidden;border-radius:2px}
+.bar i{display:block;height:100%;background:var(--ink);width:0%;transition:width .18s linear}
+.progress-txt{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-60);margin-top:6px;display:flex;justify-content:space-between}
+
+/* ---------- verdict ---------- */
+.verdict{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));border:1px solid var(--rule);background:var(--card);border-radius:2px}
+.v-cell{padding:14px 16px;border-right:1px solid var(--rule)}
+.v-cell:last-child{border-right:none}
+.v-cell .n{font-family:'Barlow Condensed',sans-serif;font-size:38px;line-height:1;font-weight:600}
+.v-cell .l{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.16em;font-size:11px;color:var(--ink-60);margin-top:4px}
+.v-cell.pass .n{color:var(--pass)} .v-cell.warn .n{color:var(--warn)} .v-cell.fail .n{color:var(--fail)}
+
+/* ---------- signature: shutter scale ---------- */
+.scale-card{padding:18px 18px 8px}
+.scale-legend{
+  display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;
+  font-size:11px;color:var(--ink-60);margin-top:2px;
+}
+#scale{width:100%;height:150px;display:block}
+
+/* ---------- rule breakdown ---------- */
+.rules{padding:6px 0}
+.rule-row{display:grid;grid-template-columns:150px 1fr 96px;gap:12px;align-items:center;padding:9px 16px;border-bottom:1px solid var(--rule)}
+.rule-row:last-child{border-bottom:none}
+.rule-name{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.12em;font-size:13px}
+.track{height:9px;background:var(--haze);display:flex;overflow:hidden;border-radius:1px}
+.track i{display:block;height:100%}
+.track .p{background:var(--pass)} .track .w{background:var(--warn)} .track .f{background:var(--fail)} .track .u{background:var(--unknown)}
+.rule-num{font-family:'IBM Plex Mono',monospace;font-size:12px;text-align:right;color:var(--ink-60)}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--ink);margin-bottom:14px}
+.tab{
+  font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.16em;
+  font-size:13px;padding:8px 16px;border:1px solid var(--rule);border-bottom:none;
+  background:transparent;color:var(--ink-60);border-radius:2px 2px 0 0;margin-right:4px;
+}
+.tab[aria-selected="true"]{background:var(--card);color:var(--ink);border-color:var(--ink);border-bottom:1px solid var(--card);margin-bottom:-1px}
+.tab:hover{background:var(--card);color:var(--ink)}
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.filters .sp{flex:1}
+
+/* ---------- grid ---------- */
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px}
+.frame{
+  background:var(--card);border:1px solid var(--rule);border-left:4px solid var(--unknown);
+  border-radius:2px;padding:0;cursor:pointer;text-align:left;overflow:hidden;
+  text-transform:none;letter-spacing:0;font-family:inherit;
+}
+.frame:hover{background:var(--card);color:var(--ink);border-color:var(--ink)}
+.frame.pass{border-left-color:var(--pass)} .frame.warn{border-left-color:var(--warn)} .frame.fail{border-left-color:var(--fail)}
+.frame .thumb{width:100%;aspect-ratio:3/2;background:var(--haze) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg"/>') center/cover;display:block;object-fit:cover}
+.frame .fn{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:5px 6px 6px;color:var(--ink-60);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.frame.fail .fn{color:var(--fail)}
+
+/* ---------- table ---------- */
+.tablewrap{overflow:auto;max-height:620px;border:1px solid var(--rule);background:var(--card);border-radius:2px}
+table{border-collapse:collapse;width:100%;font-family:'IBM Plex Mono',monospace;font-size:12px}
+th{
+  position:sticky;top:0;background:var(--card);text-align:left;padding:9px 10px;
+  border-bottom:1px solid var(--ink);font-family:'Barlow Condensed',sans-serif;
+  text-transform:uppercase;letter-spacing:.14em;font-size:11px;color:var(--ink-60);
+  cursor:pointer;white-space:nowrap;z-index:2;
+}
+th:hover{color:var(--ink)}
+td{padding:7px 10px;border-bottom:1px solid var(--haze);white-space:nowrap}
+tr.fail td:first-child{box-shadow:inset 3px 0 0 var(--fail)}
+tr.warn td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+tr.pass td:first-child{box-shadow:inset 3px 0 0 var(--pass)}
+td.bad{background:var(--fail-bg);color:var(--fail);font-weight:500}
+td.mid{background:var(--warn-bg);color:var(--warn)}
+
+/* ---------- map ---------- */
+#map{height:460px;border:1px solid var(--rule);border-radius:2px;background:var(--card)}
+.map-note{font-size:12px;color:var(--ink-60);margin-top:8px}
+
+/* ---------- preflight checklist ---------- */
+.checklist{padding:4px 0}
+.check-row{display:flex;gap:10px;align-items:flex-start;padding:10px 16px;border-bottom:1px solid var(--rule)}
+.check-row:last-child{border-bottom:none}
+.check-row input{margin-top:3px;width:15px;height:15px;accent-color:var(--ink)}
+.check-row .t{font-weight:500}
+.check-row .d{color:var(--ink-60);font-size:12.5px}
+
+/* ---------- drawer ---------- */
+#drawer{
+  position:fixed;inset:0 0 0 auto;width:min(440px,100%);background:var(--card);
+  border-left:1px solid var(--ink);transform:translateX(100%);transition:transform .2s ease;
+  z-index:1000;overflow:auto;padding:20px;box-shadow:-14px 0 40px -30px rgba(27,42,51,.9);
+}
+#drawer.open{transform:translateX(0)}
+#drawer h3{font-family:'IBM Plex Mono',monospace;font-size:13px;margin:0 0 4px;word-break:break-all}
+#drawer .sub{font-size:12px;color:var(--ink-60);margin-bottom:14px}
+#drawer img{width:100%;border:1px solid var(--rule);margin-bottom:14px;display:block}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-family:'IBM Plex Mono',monospace;font-size:12px;border-top:1px solid var(--rule);padding-top:10px}
+.kv .k{color:var(--ink-60)}
+.kv .v{text-align:right}
+.kv .v.bad{color:var(--fail);font-weight:600}
+.kv .v.mid{color:var(--warn);font-weight:600}
+.kv .v.ok{color:var(--pass)}
+.close{position:absolute;top:14px;right:16px}
+
+.hidden{display:none !important}
+.err{background:var(--fail-bg);border:1px solid var(--fail);color:var(--fail);padding:12px 14px;border-radius:2px;font-size:13px}
+footer{border-top:1px solid var(--rule);margin-top:34px;padding-top:14px;font-size:12px;color:var(--ink-60)}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+@media (max-width:640px){h1{font-size:36px}.rule-row{grid-template-columns:110px 1fr 70px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="placard">
+  <div class="placard-row">
+    <div>
+      <h1>OCC<span>ULAR</span></h1>
+      <div class="tag">Frame metadata check · oblique camera count</div>
+    </div>
+    <div class="stamp">
+      SESSION <b id="sessionId">—</b><br>
+      LOADED <b id="loadedCount">0</b> FRAMES<br>
+      SPEC <b id="specStamp">default</b>
+    </div>
+  </div>
+</header>
+
+<!-- ========== SPEC ========== -->
+<section>
+  <p class="eyebrow">Camera spec</p>
+  <div class="spec">
+    <div class="spec-item">
+      <label for="sShutter">Shutter at least</label>
+      <input id="sShutter" type="text" value="1/1600" aria-describedby="shutHint">
+    </div>
+    <div class="spec-item">
+      <label for="sIso">ISO</label>
+      <input id="sIso" type="number" value="800" step="1" min="25">
+    </div>
+    <div class="spec-item">
+      <label for="sAperture">Aperture f/</label>
+      <input id="sAperture" type="number" value="8.0" step="0.1" min="1">
+    </div>
+    <div class="spec-item">
+      <label for="sFocal">Focal length mm</label>
+      <input id="sFocal" type="number" value="50" step="1" min="4">
+    </div>
+    <div class="spec-item">
+      <label for="sWb">White balance</label>
+      <select id="sWb">
+        <option value="manual">Manual</option>
+        <option value="auto">Auto</option>
+        <option value="any">Not checked</option>
+      </select>
+    </div>
+    <div class="spec-item">
+      <label for="sInterval">Trigger gap max (s)</label>
+      <input id="sInterval" type="text" value="auto" aria-describedby="gapHint">
+    </div>
+  </div>
+  <div class="spec-actions">
+    <button id="applySpec" class="solid">Re-check frames</button>
+    <button id="saveSpec" class="ghost">Save spec file</button>
+    <button id="loadSpecBtn" class="ghost">Load spec file</button>
+    <input id="loadSpec" type="file" accept=".json" class="hidden">
+    <span id="gapHint" style="font-size:12px;color:var(--ink-60);align-self:center">
+      Leave gap on <b>auto</b> to derive the expected interval from the median of this flight.
+    </span>
+  </div>
+</section>
+
+<!-- ========== INTAKE ========== -->
+<section>
+  <p class="eyebrow">Load frames</p>
+  <div id="drop">
+    <h2>Drop the flight folder here</h2>
+    <p>JPEGs are read in the browser. Nothing is uploaded, nothing leaves this machine.</p>
+    <div class="drop-actions">
+      <button id="pickFiles" class="solid">Choose files</button>
+      <button id="pickFolder">Choose folder</button>
+      <button id="clearAll" class="ghost">Clear</button>
+    </div>
+    <input id="fileInput" type="file" accept="image/jpeg,image/jpg,image/tiff,.jpg,.jpeg,.arw,.tif" multiple class="hidden">
+    <input id="folderInput" type="file" webkitdirectory directory multiple class="hidden">
+    <div id="progress">
+      <div class="bar"><i id="barFill"></i></div>
+      <div class="progress-txt"><span id="progLabel">Reading…</span><span id="progCount">0 / 0</span></div>
+    </div>
+  </div>
+  <div id="loadErr" class="err hidden" style="margin-top:12px"></div>
+</section>
+
+<!-- ========== RESULTS ========== -->
+<div id="results" class="hidden">
+
+  <section>
+    <p class="eyebrow">Verdict</p>
+    <div class="verdict">
+      <div class="v-cell"><div class="n" id="vTotal">0</div><div class="l">Frames read</div></div>
+      <div class="v-cell pass"><div class="n" id="vPass">0</div><div class="l">Pass</div></div>
+      <div class="v-cell warn"><div class="n" id="vWarn">0</div><div class="l">Check</div></div>
+      <div class="v-cell fail"><div class="n" id="vFail">0</div><div class="l">Fail</div></div>
+      <div class="v-cell"><div class="n" id="vGps">0</div><div class="l">With GPS fix</div></div>
+      <div class="v-cell"><div class="n" id="vDur">—</div><div class="l">Capture window</div></div>
+    </div>
+  </section>
+
+  <!-- SIGNATURE ELEMENT -->
+  <section>
+    <p class="eyebrow">Shutter distribution against spec</p>
+    <div class="card scale-card">
+      <svg id="scale" viewBox="0 0 1000 150" preserveAspectRatio="none" role="img" aria-label="Shutter speed distribution"></svg>
+      <div class="scale-legend"><span>◀ slower · motion blur risk</span><span>faster ▶</span></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Failures by rule</p>
+    <div class="card rules" id="ruleBreak"></div>
+  </section>
+
+  <section>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-view="grid" aria-selected="true">Contact sheet</button>
+      <button class="tab" role="tab" data-view="table" aria-selected="false">Table</button>
+      <button class="tab" role="tab" data-view="map" aria-selected="false">Track</button>
+      <button class="tab" role="tab" data-view="preflight" aria-selected="false">Pre-flight sign-off</button>
+    </div>
+
+    <div class="filters">
+      <button class="filt solid" data-filt="all">All</button>
+      <button class="filt" data-filt="fail">Fail only</button>
+      <button class="filt" data-filt="warn">Check only</button>
+      <span class="sp"></span>
+      <button id="expAll" class="ghost">Export CSV</button>
+      <button id="expFail" class="ghost">Export failures</button>
+    </div>
+
+    <div id="viewGrid"><div id="grid"></div></div>
+
+    <div id="viewTable" class="hidden">
+      <div class="tablewrap"><table id="tbl">
+        <thead><tr>
+          <th data-sort="name">File</th><th data-sort="time">Captured</th>
+          <th data-sort="shutter">Shutter</th><th data-sort="iso">ISO</th>
+          <th data-sort="aperture">Aperture</th><th data-sort="focal">Focal</th>
+          <th data-sort="wb">WB</th><th data-sort="gap">Gap s</th>
+          <th data-sort="lat">Lat</th><th data-sort="lon">Lon</th>
+          <th data-sort="alt">Alt m</th><th data-sort="status">Verdict</th>
+        </tr></thead>
+        <tbody id="tblBody"></tbody>
+      </table></div>
+    </div>
+
+    <div id="viewMap" class="hidden">
+      <div id="map"></div>
+      <p class="map-note" id="mapNote">Green dots pass. Amber need a look. Red break spec. The line follows capture order, so a straight jump across the block is a dropped trigger run.</p>
+    </div>
+
+    <div id="viewPreflight" class="hidden">
+      <div class="card checklist">
+        <div class="check-row">
+          <input type="checkbox" id="ck1">
+          <div><div class="t"><label for="ck1">Long Exposure NR — off</label></div>
+          <div class="d">Not written to standard EXIF by Sony bodies. Confirm on the camera before the wheels leave the ground, then tick here so the attestation carries into the CSV.</div></div>
+        </div>
+        <div class="check-row">
+          <input type="checkbox" id="ck2">
+          <div><div class="t"><label for="ck2">SteadyShot / OSS — off</label></div>
+          <div class="d">Stabilisation on a hard-mounted pod adds drift between frames. Vendor maker-note only, so it is a physical check.</div></div>
+        </div>
+        <div class="check-row">
+          <input type="checkbox" id="ck3">
+          <div><div class="t"><label for="ck3">Pod angle and lens locked</label></div>
+          <div class="d">Mount angle set and torqued, focus taped to infinity, zoom ring immobilised if not a prime.</div></div>
+        </div>
+        <div class="check-row">
+          <input type="checkbox" id="ck4">
+          <div><div class="t"><label for="ck4">Camera clock synced to GPS</label></div>
+          <div class="d">Frame timestamps drive the track and the gap rule. Sync before every survey day and note the offset.</div></div>
+        </div>
+        <div class="check-row">
+          <input type="checkbox" id="ck5">
+          <div><div class="t"><label for="ck5">Card formatted in camera, capacity checked</label></div>
+          <div class="d">Fresh card per sortie. Never reuse a card that has not been offloaded and checksummed.</div></div>
+        </div>
+        <div class="check-row">
+          <input type="checkbox" id="ck6">
+          <div><div class="t"><label for="ck6">Test burst passed on the apron</label></div>
+          <div class="d">Shoot 20 frames on the ground, run them through OCCULAR, confirm a clean sheet before departure.</div></div>
+        </div>
+      </div>
+      <div class="spec-actions">
+        <input id="operator" type="text" placeholder="Operator name" style="font-family:'IBM Plex Mono',monospace;padding:8px 10px;border:1px solid var(--rule);border-radius:2px">
+        <input id="sortie" type="text" placeholder="Sortie / block ID" style="font-family:'IBM Plex Mono',monospace;padding:8px 10px;border:1px solid var(--rule);border-radius:2px">
+      </div>
+    </div>
+  </section>
+</div>
+
+<footer>
+  OCCULAR reads EXIF locally with <b>exifr</b> and draws thumbnails from the JPEG's own embedded preview, so a full sortie of several thousand frames checks in seconds. Files are never transmitted.
+</footer>
+</div>
+
+<div id="drawer" role="dialog" aria-label="Frame detail">
+  <button class="close" id="closeDrawer">Close</button>
+  <h3 id="dName">—</h3>
+  <div class="sub" id="dSub">—</div>
+  <img id="dImg" alt="" class="hidden">
+  <div class="kv" id="dKv"></div>
+</div>
+
+<script>
+/* =====================================================================
+   OCCULAR — EXIF quality control for Oblique Camera Count surveys
+   Single file. No build step. No backend. No uploads.
+   ===================================================================== */
+
+/* ---------- 1. dependency loading (CDN with fallbacks) ---------- */
+const EXIFR_URLS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/exifr/7.1.3/full.umd.min.js',
+  'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js',
+  'https://unpkg.com/exifr@7.1.3/dist/full.umd.js'
+];
+const LEAFLET_URLS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
+  'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js'
+];
+function loadScript(url){
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = url; s.async = true;
+    s.onload = () => res(url);
+    s.onerror = () => rej(new Error('failed ' + url));
+    document.head.appendChild(s);
+  });
+}
+async function loadFirstAvailable(urls){
+  for (const u of urls){ try { return await loadScript(u); } catch(e){ /* try next */ } }
+  throw new Error('no CDN reachable');
+}
+let exifrReady = loadFirstAvailable(EXIFR_URLS).catch(() => {
+  showLoadError('Could not load the EXIF reader from any CDN. Connect once to cache it, or download exifr and place full.umd.js next to this file.');
+  throw new Error('exifr unavailable');
+});
+let leafletReady = null;
+
+/* ---------- 2. state ---------- */
+let frames = [];              // parsed frame records
+let spec = defaultSpec();
+let filter = 'all';
+let sortKey = 'time', sortDir = 1;
+let map = null, mapLayer = null;
+
+function defaultSpec(){
+  return { shutterMax: 1/1600, shutterLabel:'1/1600', iso:800, aperture:8.0, focal:50, wb:'manual', gapMax:'auto' };
+}
+
+/* ---------- 3. helpers ---------- */
+const $ = id => document.getElementById(id);
+function parseShutter(txt){
+  if (!txt) return null;
+  txt = String(txt).trim();
+  if (txt.includes('/')){
+    const [a,b] = txt.split('/').map(Number);
+    if (b) return a/b;
+    return null;
+  }
+  const n = Number(txt);
+  return isFinite(n) && n > 0 ? n : null;
+}
+function fmtShutter(sec){
+  if (sec == null) return '—';
+  if (sec >= 1) return sec.toFixed(1) + 's';
+  return '1/' + Math.round(1/sec);
+}
+function fmtTime(d){
+  if (!d) return '—';
+  return d.toISOString().replace('T',' ').slice(0,19);
+}
+function showLoadError(msg){
+  const el = $('loadErr'); el.textContent = msg; el.classList.remove('hidden');
+}
+
+/* ---------- 4. spec I/O ---------- */
+function readSpecFromUI(){
+  const sh = parseShutter($('sShutter').value);
+  spec = {
+    shutterMax: sh || (1/1600),
+    shutterLabel: $('sShutter').value.trim() || '1/1600',
+    iso: Number($('sIso').value) || 800,
+    aperture: Number($('sAperture').value) || 8,
+    focal: Number($('sFocal').value) || 50,
+    wb: $('sWb').value,
+    gapMax: $('sInterval').value.trim().toLowerCase() === 'auto' ? 'auto' : Number($('sInterval').value)
+  };
+  $('specStamp').textContent = `${spec.shutterLabel} · ISO${spec.iso} · f/${spec.aperture} · ${spec.focal}mm`;
+}
+function writeSpecToUI(s){
+  $('sShutter').value = s.shutterLabel; $('sIso').value = s.iso;
+  $('sAperture').value = s.aperture; $('sFocal').value = s.focal;
+  $('sWb').value = s.wb; $('sInterval').value = s.gapMax;
+}
+
+/* ---------- 5. EXIF read ---------- */
+const EXIF_OPTS = { tiff:true, ifd0:true, exif:true, gps:true, translateValues:true, reviveValues:true };
+
+async function readFile(file){
+  let x = null, err = null;
+  try { x = await exifr.parse(file, EXIF_OPTS); }
+  catch(e){ err = e.message; }
+  x = x || {};
+  const iso = x.ISO ?? x.ISOSpeedRatings ?? x.PhotographicSensitivity ?? null;
+  let wbRaw = x.WhiteBalance;
+  let wb = null;
+  if (wbRaw != null){
+    if (typeof wbRaw === 'number') wb = wbRaw === 0 ? 'auto' : 'manual';
+    else wb = String(wbRaw).toLowerCase().includes('auto') ? 'auto' : 'manual';
+  }
+  return {
+    name: file.name,
+    path: file.webkitRelativePath || file.name,
+    size: file.size,
+    file,
+    shutter: typeof x.ExposureTime === 'number' ? x.ExposureTime : null,
+    iso: typeof iso === 'number' ? iso : null,
+    aperture: typeof x.FNumber === 'number' ? x.FNumber : null,
+    focal: typeof x.FocalLength === 'number' ? x.FocalLength : null,
+    wb,
+    time: x.DateTimeOriginal instanceof Date ? x.DateTimeOriginal
+        : (x.CreateDate instanceof Date ? x.CreateDate : null),
+    lat: typeof x.latitude === 'number' ? x.latitude : null,
+    lon: typeof x.longitude === 'number' ? x.longitude : null,
+    alt: typeof x.GPSAltitude === 'number' ? x.GPSAltitude : null,
+    make: x.Make || '', model: x.Model || '', lens: x.LensModel || x.LensID || '',
+    readError: err,
+    gap: null, checks: {}, status: 'unknown'
+  };
+}
+
+/* concurrency pool — keeps thousands of files from stalling the tab */
+async function readAll(fileList){
+  const files = Array.from(fileList).filter(f => /\.(jpe?g|tiff?|arw|dng)$/i.test(f.name));
+  if (!files.length){ showLoadError('No JPEG, TIFF or RAW files found in that selection.'); return; }
+  $('loadErr').classList.add('hidden');
+  $('progress').style.display = 'block';
+  $('progLabel').textContent = 'Reading EXIF…';
+
+  await exifrReady;
+
+  const out = new Array(files.length);
+  let done = 0, next = 0;
+  const CONC = 12;
+  async function worker(){
+    while (next < files.length){
+      const i = next++;
+      out[i] = await readFile(files[i]);
+      done++;
+      if (done % 20 === 0 || done === files.length){
+        $('barFill').style.width = (done/files.length*100).toFixed(1) + '%';
+        $('progCount').textContent = `${done} / ${files.length}`;
+        await new Promise(r => setTimeout(r, 0));   // let the UI breathe
+      }
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(CONC, files.length)}, worker));
+
+  frames = out.filter(Boolean);
+  frames.sort((a,b) => (a.time?.getTime() ?? 0) - (b.time?.getTime() ?? 0));
+  $('progress').style.display = 'none';
+  $('loadedCount').textContent = frames.length;
+  $('sessionId').textContent = new Date().toISOString().slice(0,16).replace('T','·');
+  evaluate();
+}
+
+/* ---------- 6. rule engine ---------- */
+function medianGap(){
+  const gaps = [];
+  for (let i=1;i<frames.length;i++){
+    if (frames[i].time && frames[i-1].time){
+      const g = (frames[i].time - frames[i-1].time)/1000;
+      if (g > 0 && g < 600) gaps.push(g);
+    }
+  }
+  if (!gaps.length) return null;
+  gaps.sort((a,b)=>a-b);
+  return gaps[Math.floor(gaps.length/2)];
+}
+
+function evaluate(){
+  readSpecFromUI();
+  const med = medianGap();
+  const gapLimit = spec.gapMax === 'auto'
+    ? (med ? Math.max(med * 1.8, med + 1) : null)
+    : spec.gapMax;
+
+  frames.forEach((f, i) => {
+    // gap to previous frame
+    f.gap = (i > 0 && f.time && frames[i-1].time) ? (f.time - frames[i-1].time)/1000 : null;
+
+    const c = {};
+    // shutter: must be at least as fast as spec (i.e. exposure time <= spec)
+    c.shutter = f.shutter == null ? 'unknown'
+      : f.shutter <= spec.shutterMax * 1.001 ? 'pass'
+      : f.shutter <= spec.shutterMax * 1.35 ? 'warn' : 'fail';
+    // ISO exact
+    c.iso = f.iso == null ? 'unknown' : (f.iso === spec.iso ? 'pass' : 'fail');
+    // aperture within a small tolerance (EXIF rounds f/8 to 7.9 or 8.1)
+    c.aperture = f.aperture == null ? 'unknown'
+      : Math.abs(f.aperture - spec.aperture) <= 0.16 ? 'pass' : 'fail';
+    // focal length
+    c.focal = f.focal == null ? 'unknown'
+      : Math.abs(f.focal - spec.focal) <= 0.6 ? 'pass' : 'fail';
+    // white balance
+    c.wb = spec.wb === 'any' ? 'pass'
+      : f.wb == null ? 'unknown' : (f.wb === spec.wb ? 'pass' : 'fail');
+    // GPS present
+    c.gps = (f.lat != null && f.lon != null) ? 'pass' : 'warn';
+    // trigger gap
+    c.gap = (gapLimit == null || f.gap == null) ? 'unknown'
+      : f.gap <= gapLimit ? 'pass' : 'fail';
+
+    f.checks = c;
+    const vals = Object.values(c);
+    f.status = vals.includes('fail') ? 'fail'
+      : vals.includes('warn') || vals.includes('unknown') ? 'warn' : 'pass';
+  });
+
+  $('results').classList.remove('hidden');
+  renderVerdict(med);
+  renderScale();
+  renderRules();
+  renderCurrentView();
+}
+
+/* ---------- 7. rendering ---------- */
+function renderVerdict(med){
+  const n = frames.length;
+  const p = frames.filter(f=>f.status==='pass').length;
+  const w = frames.filter(f=>f.status==='warn').length;
+  const fl = frames.filter(f=>f.status==='fail').length;
+  const g = frames.filter(f=>f.lat!=null).length;
+  $('vTotal').textContent = n; $('vPass').textContent = p;
+  $('vWarn').textContent = w; $('vFail').textContent = fl; $('vGps').textContent = g;
+  const times = frames.map(f=>f.time).filter(Boolean);
+  if (times.length > 1){
+    const mins = Math.round((times[times.length-1] - times[0]) / 60000);
+    $('vDur').textContent = mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`;
+  } else $('vDur').textContent = '—';
+  if (med) $('gapHint').innerHTML = `Median trigger interval on this flight: <b>${med.toFixed(1)} s</b>. Gaps beyond 1.8× that are flagged.`;
+}
+
+/* SIGNATURE: shutter scale — a light-meter strip, not a bar chart */
+function renderScale(){
+  const svg = $('scale');
+  const W = 1000, H = 150, padL = 30, padR = 30, base = 118;
+  const denoms = [60,125,250,500,1000,1600,2000,4000,8000];
+  const lo = Math.log2(50), hi = Math.log2(10000);
+  const x = d => padL + (Math.log2(d) - lo)/(hi - lo) * (W - padL - padR);
+
+  const specDen = 1/spec.shutterMax;
+  const bins = new Map();
+  frames.forEach(f => {
+    if (!f.shutter) return;
+    const d = 1/f.shutter;
+    const key = Math.round(Math.log2(d) * 6) / 6;   // ~1/6 stop bins
+    bins.set(key, (bins.get(key)||0) + 1);
+  });
+  const maxN = Math.max(1, ...bins.values());
+
+  let s = '';
+  // fail zone
+  s += `<rect x="${padL}" y="10" width="${Math.max(0,x(specDen)-padL)}" height="${base-10}" fill="var(--fail-bg)"/>`;
+  // baseline
+  s += `<line x1="${padL}" y1="${base}" x2="${W-padR}" y2="${base}" stroke="var(--ink)" stroke-width="1"/>`;
+  // ticks
+  denoms.forEach(d => {
+    const px = x(d);
+    s += `<line x1="${px}" y1="${base}" x2="${px}" y2="${base+6}" stroke="var(--ink-30)"/>`;
+    s += `<text x="${px}" y="${base+22}" font-family="IBM Plex Mono,monospace" font-size="11"
+           fill="var(--ink-60)" text-anchor="middle">1/${d}</text>`;
+  });
+  // bars
+  bins.forEach((count, key) => {
+    const d = Math.pow(2, key);
+    const px = x(d);
+    if (px < padL - 5 || px > W - padR + 5) return;
+    const h = (count/maxN) * (base - 26);
+    const col = d >= specDen*0.999 ? 'var(--pass)' : (d >= specDen/1.35 ? 'var(--warn)' : 'var(--fail)');
+    s += `<rect x="${px-4}" y="${base-h}" width="8" height="${h}" fill="${col}" opacity="0.88"/>`;
+  });
+  // spec threshold
+  const sx = x(specDen);
+  s += `<line x1="${sx}" y1="4" x2="${sx}" y2="${base}" stroke="var(--ink)" stroke-width="2" stroke-dasharray="5 4"/>`;
+  s += `<text x="${sx+7}" y="18" font-family="Barlow Condensed,sans-serif" font-size="14"
+         letter-spacing="2" fill="var(--ink)">SPEC ${spec.shutterLabel}</text>`;
+  svg.innerHTML = s;
+}
+
+const RULE_LABELS = {shutter:'Shutter', iso:'ISO', aperture:'Aperture', focal:'Focal length', wb:'White balance', gps:'GPS fix', gap:'Trigger gap'};
+function renderRules(){
+  const box = $('ruleBreak'); box.innerHTML = '';
+  Object.keys(RULE_LABELS).forEach(k => {
+    const tally = {pass:0,warn:0,fail:0,unknown:0};
+    frames.forEach(f => tally[f.checks[k]] = (tally[f.checks[k]]||0) + 1);
+    const n = frames.length || 1;
+    const bad = tally.fail;
+    const row = document.createElement('div');
+    row.className = 'rule-row';
+    row.innerHTML = `
+      <div class="rule-name">${RULE_LABELS[k]}</div>
+      <div class="track">
+        <i class="p" style="width:${tally.pass/n*100}%"></i>
+        <i class="w" style="width:${tally.warn/n*100}%"></i>
+        <i class="u" style="width:${tally.unknown/n*100}%"></i>
+        <i class="f" style="width:${tally.fail/n*100}%"></i>
+      </div>
+      <div class="rule-num">${bad ? bad + ' fail' : 'clean'}</div>`;
+    box.appendChild(row);
+  });
+}
+
+function visibleFrames(){
+  if (filter === 'all') return frames;
+  return frames.filter(f => f.status === filter);
+}
+
+/* thumbnails: pulled from the JPEG's own embedded preview — fast, lazy */
+const thumbObserver = new IntersectionObserver(async entries => {
+  for (const e of entries){
+    if (!e.isIntersecting) continue;
+    thumbObserver.unobserve(e.target);
+    const idx = Number(e.target.dataset.idx);
+    const f = frames[idx];
+    try {
+      const url = await exifr.thumbnailUrl(f.file);
+      if (url) e.target.querySelector('img').src = url;
+    } catch(_){}
+  }
+}, {rootMargin:'300px'});
+
+function renderGrid(){
+  const g = $('grid'); g.innerHTML = '';
+  const list = visibleFrames();
+  list.forEach(f => {
+    const idx = frames.indexOf(f);
+    const b = document.createElement('button');
+    b.className = 'frame ' + f.status;
+    b.dataset.idx = idx;
+    b.innerHTML = `<img class="thumb" alt=""><div class="fn">${f.name}</div>`;
+    b.addEventListener('click', () => openDrawer(idx));
+    g.appendChild(b);
+    thumbObserver.observe(b);
+  });
+  if (!list.length) g.innerHTML = '<p style="color:var(--ink-60)">Nothing in this filter. Good news, if you were looking at failures.</p>';
+}
+
+function renderTable(){
+  const list = visibleFrames().slice().sort((a,b) => {
+    const va = a[sortKey], vb = b[sortKey];
+    if (va == null) return 1; if (vb == null) return -1;
+    return (va > vb ? 1 : va < vb ? -1 : 0) * sortDir;
+  });
+  const cls = (f,k) => f.checks[k]==='fail' ? 'bad' : (f.checks[k]==='warn'||f.checks[k]==='unknown') ? 'mid' : '';
+  $('tblBody').innerHTML = list.map(f => {
+    const idx = frames.indexOf(f);
+    return `<tr class="${f.status}" data-idx="${idx}" style="cursor:pointer">
+      <td>${f.name}</td>
+      <td>${fmtTime(f.time)}</td>
+      <td class="${cls(f,'shutter')}">${fmtShutter(f.shutter)}</td>
+      <td class="${cls(f,'iso')}">${f.iso ?? '—'}</td>
+      <td class="${cls(f,'aperture')}">${f.aperture != null ? 'f/'+f.aperture.toFixed(1) : '—'}</td>
+      <td class="${cls(f,'focal')}">${f.focal != null ? f.focal.toFixed(0)+'mm' : '—'}</td>
+      <td class="${cls(f,'wb')}">${f.wb ?? '—'}</td>
+      <td class="${cls(f,'gap')}">${f.gap != null ? f.gap.toFixed(1) : '—'}</td>
+      <td>${f.lat != null ? f.lat.toFixed(5) : '—'}</td>
+      <td>${f.lon != null ? f.lon.toFixed(5) : '—'}</td>
+      <td>${f.alt != null ? f.alt.toFixed(0) : '—'}</td>
+      <td>${f.status}</td></tr>`;
+  }).join('');
+  $('tblBody').querySelectorAll('tr').forEach(tr =>
+    tr.addEventListener('click', () => openDrawer(Number(tr.dataset.idx))));
+}
+
+async function renderMap(){
+  const pts = visibleFrames().filter(f => f.lat != null && f.lon != null);
+  if (!pts.length){
+    $('mapNote').textContent = 'No GPS in these frames. Either the camera has no GPS receiver or the geotag link was down — check the hot-shoe module before the next sortie.';
+    return;
+  }
+  if (!leafletReady) leafletReady = loadFirstAvailable(LEAFLET_URLS);
+  try { await leafletReady; } catch(e){
+    $('mapNote').textContent = 'Map library unavailable offline. The Track tab needs one online session to cache Leaflet; the CSV export still carries every coordinate.';
+    return;
+  }
+  if (!map){
+    map = L.map('map');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {maxZoom:18, attribution:'© OpenStreetMap'}).addTo(map);
+  }
+  if (mapLayer) map.removeLayer(mapLayer);
+  mapLayer = L.layerGroup().addTo(map);
+  const colour = {pass:'#2E7D5B', warn:'#B8860F', fail:'#A8352F', unknown:'#93A0A6'};
+  L.polyline(pts.map(f => [f.lat, f.lon]), {color:'#1B2A33', weight:1, opacity:.45}).addTo(mapLayer);
+  pts.forEach(f => {
+    L.circleMarker([f.lat, f.lon], {
+      radius:4, color:colour[f.status], fillColor:colour[f.status], fillOpacity:.85, weight:1
+    }).bindPopup(`<b>${f.name}</b><br>${fmtShutter(f.shutter)} · ISO ${f.iso ?? '—'} · f/${f.aperture ?? '—'}<br>${f.status.toUpperCase()}`)
+      .addTo(mapLayer);
+  });
+  map.fitBounds(L.latLngBounds(pts.map(f => [f.lat, f.lon])).pad(0.08));
+  setTimeout(() => map.invalidateSize(), 60);
+}
+
+let currentView = 'grid';
+function renderCurrentView(){
+  if (currentView === 'grid') renderGrid();
+  else if (currentView === 'table') renderTable();
+  else if (currentView === 'map') renderMap();
+}
+
+/* ---------- 8. drawer ---------- */
+async function openDrawer(idx){
+  const f = frames[idx];
+  $('dName').textContent = f.path;
+  $('dSub').textContent = `${f.make} ${f.model}${f.lens ? ' · ' + f.lens : ''}`.trim() || 'Camera not identified';
+  const img = $('dImg'); img.classList.add('hidden');
+  try {
+    const url = await exifr.thumbnailUrl(f.file);
+    if (url){ img.src = url; img.classList.remove('hidden'); }
+  } catch(_){}
+  const badge = s => s==='fail' ? 'bad' : (s==='warn'||s==='unknown') ? 'mid' : 'ok';
+  const rows = [
+    ['Verdict', f.status.toUpperCase(), badge(f.status)],
+    ['Captured', fmtTime(f.time), ''],
+    ['Shutter', fmtShutter(f.shutter), badge(f.checks.shutter)],
+    ['ISO', f.iso ?? '—', badge(f.checks.iso)],
+    ['Aperture', f.aperture != null ? 'f/'+f.aperture.toFixed(1) : '—', badge(f.checks.aperture)],
+    ['Focal length', f.focal != null ? f.focal.toFixed(0)+' mm' : '—', badge(f.checks.focal)],
+    ['White balance', f.wb ?? '—', badge(f.checks.wb)],
+    ['Gap to previous', f.gap != null ? f.gap.toFixed(1)+' s' : '—', badge(f.checks.gap)],
+    ['Latitude', f.lat != null ? f.lat.toFixed(6) : '—', badge(f.checks.gps)],
+    ['Longitude', f.lon != null ? f.lon.toFixed(6) : '—', badge(f.checks.gps)],
+    ['GPS altitude', f.alt != null ? f.alt.toFixed(0)+' m' : '—', ''],
+    ['File size', (f.size/1048576).toFixed(1)+' MB', '']
+  ];
+  $('dKv').innerHTML = rows.map(r =>
+    `<div class="k">${r[0]}</div><div class="v ${r[2]}">${r[1]}</div>`).join('');
+  $('drawer').classList.add('open');
+}
+
+/* ---------- 9. export ---------- */
+function toCSV(list){
+  const head = ['file','path','captured','shutter','shutter_seconds','iso','aperture','focal_mm',
+    'white_balance','gap_s','latitude','longitude','altitude_m','make','model','lens',
+    'chk_shutter','chk_iso','chk_aperture','chk_focal','chk_wb','chk_gps','chk_gap','verdict'];
+  const esc = v => {
+    const s = v == null ? '' : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  };
+  const meta = [
+    `# OCCULAR frame check`,
+    `# generated,${new Date().toISOString()}`,
+    `# spec,shutter>=${spec.shutterLabel} ISO ${spec.iso} f/${spec.aperture} ${spec.focal}mm WB ${spec.wb}`,
+    `# operator,${$('operator').value || 'unsigned'}`,
+    `# sortie,${$('sortie').value || 'unlabelled'}`,
+    `# preflight_longexposure_nr_off,${$('ck1').checked}`,
+    `# preflight_steadyshot_off,${$('ck2').checked}`,
+    `# preflight_pod_locked,${$('ck3').checked}`,
+    `# preflight_clock_synced,${$('ck4').checked}`,
+    `# preflight_card_fresh,${$('ck5').checked}`,
+    `# preflight_apron_test,${$('ck6').checked}`
+  ].join('\n');
+  const body = list.map(f => [
+    f.name, f.path, fmtTime(f.time), fmtShutter(f.shutter), f.shutter ?? '', f.iso ?? '',
+    f.aperture ?? '', f.focal ?? '', f.wb ?? '', f.gap != null ? f.gap.toFixed(2) : '',
+    f.lat ?? '', f.lon ?? '', f.alt ?? '', f.make, f.model, f.lens,
+    f.checks.shutter, f.checks.iso, f.checks.aperture, f.checks.focal,
+    f.checks.wb, f.checks.gps, f.checks.gap, f.status
+  ].map(esc).join(',')).join('\n');
+  return meta + '\n' + head.join(',') + '\n' + body;
+}
+function download(text, name, type){
+  const blob = new Blob([text], {type: type || 'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ---------- 10. wiring ---------- */
+$('pickFiles').onclick = () => $('fileInput').click();
+$('pickFolder').onclick = () => $('folderInput').click();
+$('fileInput').onchange = e => readAll(e.target.files);
+$('folderInput').onchange = e => readAll(e.target.files);
+$('clearAll').onclick = () => {
+  frames = []; $('results').classList.add('hidden');
+  $('loadedCount').textContent = '0'; $('grid').innerHTML = '';
+  $('fileInput').value = ''; $('folderInput').value = '';
+};
+
+const drop = $('drop');
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.add('hot');
+}));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); if (ev === 'dragleave') drop.classList.remove('hot');
+}));
+drop.addEventListener('drop', async e => {
+  drop.classList.remove('hot');
+  const items = e.dataTransfer.items;
+  if (items && items.length && items[0].webkitGetAsEntry){
+    const files = [];
+    const walk = entry => new Promise(res => {
+      if (entry.isFile) entry.file(f => { files.push(f); res(); });
+      else if (entry.isDirectory){
+        const rd = entry.createReader();
+        const readBatch = () => rd.readEntries(async ents => {
+          if (!ents.length) return res();
+          await Promise.all(ents.map(walk));
+          readBatch();
+        });
+        readBatch();
+      } else res();
+    });
+    await Promise.all(Array.from(items).map(i => {
+      const en = i.webkitGetAsEntry(); return en ? walk(en) : Promise.resolve();
+    }));
+    readAll(files);
+  } else readAll(e.dataTransfer.files);
+});
+
+$('applySpec').onclick = () => { if (frames.length) evaluate(); else readSpecFromUI(); };
+$('saveSpec').onclick = () => { readSpecFromUI(); download(JSON.stringify(spec, null, 2), 'occ-camera-spec.json', 'application/json'); };
+$('loadSpecBtn').onclick = () => $('loadSpec').click();
+$('loadSpec').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { writeSpecToUI(JSON.parse(await f.text())); if (frames.length) evaluate(); else readSpecFromUI(); }
+  catch(_){ showLoadError('That spec file could not be read. Expected the JSON produced by Save spec file.'); }
+};
+
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected','false'));
+  t.setAttribute('aria-selected','true');
+  currentView = t.dataset.view;
+  ['grid','table','map','preflight'].forEach(v =>
+    $('view' + v[0].toUpperCase() + v.slice(1)).classList.toggle('hidden', v !== currentView));
+  renderCurrentView();
+});
+document.querySelectorAll('.filt').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.filt').forEach(x => x.classList.remove('solid'));
+  b.classList.add('solid'); filter = b.dataset.filt; renderCurrentView();
+});
+document.querySelectorAll('th[data-sort]').forEach(th => th.onclick = () => {
+  const k = th.dataset.sort;
+  sortDir = (k === sortKey) ? -sortDir : 1; sortKey = k; renderTable();
+});
+$('expAll').onclick = () => download(toCSV(frames), 'occular-frame-check.csv');
+$('expFail').onclick = () => download(toCSV(frames.filter(f => f.status !== 'pass')), 'occular-failures.csv');
+$('closeDrawer').onclick = () => $('drawer').classList.remove('open');
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('drawer').classList.remove('open'); });
+
+readSpecFromUI();
+</script>
+</body>
+</html>

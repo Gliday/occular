@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OCCULAR — frame check for oblique camera counts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{
+  --ink:#1B2A33; --ink-60:#5C6B73; --ink-30:#93A0A6;
+  --haze:#EDEFEC; --card:#FFFFFF; --rule:#C9CFCB;
+  --pass:#2E7D5B; --warn:#B8860F; --fail:#A8352F; --unknown:#93A0A6;
+  --pass-bg:#E7F1EC; --warn-bg:#F7EEDA; --fail-bg:#F6E4E2;
+  --shadow:0 1px 0 rgba(27,42,51,.06), 0 8px 24px -18px rgba(27,42,51,.5);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--haze);color:var(--ink);
+  font-family:'IBM Plex Sans',system-ui,-apple-system,Segoe UI,sans-serif;
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px;margin:0 auto;padding:0 20px 80px}
+
+header.placard{border-bottom:1px solid var(--ink);margin-bottom:22px;padding:26px 0 14px}
+.placard-row{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
+h1{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:52px;line-height:.9;
+  letter-spacing:.10em;text-transform:uppercase;margin:0}
+h1 span{color:var(--ink-30)}
+.tag{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.22em;
+  font-size:12px;color:var(--ink-60);margin-top:8px}
+.stamp{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-60);text-align:right;line-height:1.7}
+.stamp b{color:var(--ink);font-weight:600}
+
+section{margin-bottom:26px}
+.eyebrow{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.2em;
+  font-size:12px;color:var(--ink-60);display:flex;align-items:center;gap:12px;margin:0 0 10px}
+.eyebrow::after{content:"";flex:1;height:1px;background:var(--rule)}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:2px;box-shadow:var(--shadow)}
+.note{font-size:12.5px;color:var(--ink-60);margin:8px 2px 0}
+
+button,.btn{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.14em;
+  font-size:13px;font-weight:500;padding:8px 16px;border-radius:2px;cursor:pointer;
+  border:1px solid var(--ink);background:var(--card);color:var(--ink);
+  transition:background .12s ease,color .12s ease}
+button:hover,.btn:hover{background:var(--ink);color:var(--haze)}
+button.solid{background:var(--ink);color:var(--haze)}
+button.ghost{border-color:var(--rule);color:var(--ink-60)}
+button:disabled{opacity:.35;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input,select{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink);
+  border:1px solid var(--rule);background:var(--card);border-radius:2px;padding:6px 8px}
+input.plain{border:none;background:transparent;padding:2px 0}
+
+/* ---------- rule editor ---------- */
+.rules-head,.rule-line{
+  display:grid;
+  grid-template-columns:26px 1.25fr 1.1fr 1.5fr .8fr .95fr .8fr 26px;
+  gap:8px;align-items:center;padding:8px 12px;
+}
+.rules-head{border-bottom:1px solid var(--ink);font-family:'Barlow Condensed',sans-serif;
+  text-transform:uppercase;letter-spacing:.14em;font-size:11px;color:var(--ink-60)}
+.rule-line{border-bottom:1px solid var(--haze)}
+.rule-line:last-child{border-bottom:none}
+.rule-line.off{opacity:.42}
+.rule-line select,.rule-line input{width:100%;min-width:0}
+.rule-line .lab{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;
+  letter-spacing:.1em;font-size:13.5px}
+.rule-line .lab small{display:block;font-family:'IBM Plex Mono',monospace;
+  text-transform:none;letter-spacing:0;font-size:10px;color:var(--ink-30)}
+.rule-line .kill{border:none;background:none;color:var(--ink-30);padding:2px;font-size:15px}
+.rule-line .kill:hover{background:none;color:var(--fail)}
+.rule-line input[type=checkbox]{width:15px;height:15px;accent-color:var(--ink)}
+.hint{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-30);grid-column:2 / -1;
+  padding:0 0 6px}
+
+#drop{border:1px dashed var(--ink-30);border-radius:2px;background:var(--card);
+  padding:36px 24px;text-align:center;transition:border-color .15s,background .15s}
+#drop.hot{border-color:var(--ink);background:#F7F9F6}
+#drop h2{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.18em;
+  font-size:20px;font-weight:500;margin:0 0 6px}
+#drop p{color:var(--ink-60);margin:0 0 16px;font-size:13px}
+.drop-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;align-items:center}
+#progress{display:none;margin-top:14px}
+.bar{height:3px;background:var(--rule);overflow:hidden;border-radius:2px}
+.bar i{display:block;height:100%;background:var(--ink);width:0%;transition:width .18s linear}
+.progress-txt{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-60);
+  margin-top:6px;display:flex;justify-content:space-between}
+
+.verdict{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));
+  border:1px solid var(--rule);background:var(--card);border-radius:2px}
+.v-cell{padding:14px 16px;border-right:1px solid var(--rule)}
+.v-cell:last-child{border-right:none}
+.v-cell .n{font-family:'Barlow Condensed',sans-serif;font-size:38px;line-height:1;font-weight:600}
+.v-cell .l{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.16em;
+  font-size:11px;color:var(--ink-60);margin-top:4px}
+.v-cell.pass .n{color:var(--pass)} .v-cell.warn .n{color:var(--warn)} .v-cell.fail .n{color:var(--fail)}
+
+.scale-card{padding:18px 18px 8px}
+.scale-legend{display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;
+  font-size:11px;color:var(--ink-60);margin-top:2px}
+#scale{width:100%;height:150px;display:block}
+
+.rule-row{display:grid;grid-template-columns:180px 1fr 110px;gap:12px;align-items:center;
+  padding:9px 16px;border-bottom:1px solid var(--rule)}
+.rule-row:last-child{border-bottom:none}
+.rule-name{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.12em;font-size:13px}
+.rule-name small{color:var(--ink-30);font-family:'IBM Plex Mono',monospace;letter-spacing:0;
+  text-transform:none;font-size:10px;display:block}
+.track{height:9px;background:var(--haze);display:flex;overflow:hidden;border-radius:1px}
+.track i{display:block;height:100%}
+.track .p{background:var(--pass)}.track .w{background:var(--warn)}
+.track .f{background:var(--fail)}.track .u{background:var(--unknown)}
+.rule-num{font-family:'IBM Plex Mono',monospace;font-size:12px;text-align:right;color:var(--ink-60)}
+
+.tabs{display:flex;border-bottom:1px solid var(--ink);margin-bottom:14px;flex-wrap:wrap}
+.tab{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.16em;
+  font-size:13px;padding:8px 16px;border:1px solid var(--rule);border-bottom:none;background:transparent;
+  color:var(--ink-60);border-radius:2px 2px 0 0;margin-right:4px}
+.tab[aria-selected="true"]{background:var(--card);color:var(--ink);border-color:var(--ink);
+  border-bottom:1px solid var(--card);margin-bottom:-1px}
+.tab:hover{background:var(--card);color:var(--ink)}
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.filters .sp{flex:1}
+
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px}
+.frame{background:var(--card);border:1px solid var(--rule);border-left:4px solid var(--unknown);
+  border-radius:2px;padding:0;cursor:pointer;text-align:left;overflow:hidden;
+  text-transform:none;letter-spacing:0;font-family:inherit}
+.frame:hover{background:var(--card);color:var(--ink);border-color:var(--ink)}
+.frame.pass{border-left-color:var(--pass)}.frame.warn{border-left-color:var(--warn)}
+.frame.fail{border-left-color:var(--fail)}
+.frame .thumb{width:100%;aspect-ratio:3/2;background:var(--haze);display:block;object-fit:cover}
+.frame .fn{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:5px 6px 6px;color:var(--ink-60);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.frame.fail .fn{color:var(--fail)}
+
+.tablewrap{overflow:auto;max-height:620px;border:1px solid var(--rule);background:var(--card);border-radius:2px}
+table{border-collapse:collapse;width:100%;font-family:'IBM Plex Mono',monospace;font-size:12px}
+th{position:sticky;top:0;background:var(--card);text-align:left;padding:9px 10px;
+  border-bottom:1px solid var(--ink);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;
+  letter-spacing:.14em;font-size:11px;color:var(--ink-60);cursor:pointer;white-space:nowrap;z-index:2}
+th:hover{color:var(--ink)}
+td{padding:7px 10px;border-bottom:1px solid var(--haze);white-space:nowrap}
+tr.fail td:first-child{box-shadow:inset 3px 0 0 var(--fail)}
+tr.warn td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+tr.pass td:first-child{box-shadow:inset 3px 0 0 var(--pass)}
+td.bad{background:var(--fail-bg);color:var(--fail);font-weight:500}
+td.mid{background:var(--warn-bg);color:var(--warn)}
+
+#map{height:460px;border:1px solid var(--rule);border-radius:2px;background:var(--card)}
+.map-note{font-size:12px;color:var(--ink-60);margin-top:8px}
+
+.check-row{display:flex;gap:10px;align-items:flex-start;padding:10px 16px;border-bottom:1px solid var(--rule)}
+.check-row:last-child{border-bottom:none}
+.check-row input{margin-top:3px;width:15px;height:15px;accent-color:var(--ink)}
+.check-row .t{font-weight:500}
+.check-row .d{color:var(--ink-60);font-size:12.5px}
+
+#drawer{position:fixed;inset:0 0 0 auto;width:min(460px,100%);background:var(--card);
+  border-left:1px solid var(--ink);transform:translateX(100%);transition:transform .2s ease;
+  z-index:1000;overflow:auto;padding:20px;box-shadow:-14px 0 40px -30px rgba(27,42,51,.9)}
+#drawer.open{transform:translateX(0)}
+#drawer h3{font-family:'IBM Plex Mono',monospace;font-size:13px;margin:0 0 4px;word-break:break-all}
+#drawer .sub{font-size:12px;color:var(--ink-60);margin-bottom:14px}
+#drawer img{width:100%;border:1px solid var(--rule);margin-bottom:14px;display:block}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-family:'IBM Plex Mono',monospace;
+  font-size:12px;border-top:1px solid var(--rule);padding-top:10px}
+.kv .k{color:var(--ink-60)} .kv .v{text-align:right;word-break:break-word}
+.kv .v.bad{color:var(--fail);font-weight:600} .kv .v.mid{color:var(--warn);font-weight:600}
+.kv .v.ok{color:var(--pass)}
+.close{position:absolute;top:14px;right:16px}
+details.raw{margin-top:14px;border-top:1px solid var(--rule);padding-top:10px}
+details.raw summary{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;
+  letter-spacing:.14em;font-size:12px;color:var(--ink-60);cursor:pointer}
+
+.hidden{display:none !important}
+.err{background:var(--fail-bg);border:1px solid var(--fail);color:var(--fail);padding:12px 14px;
+  border-radius:2px;font-size:13px}
+footer{border-top:1px solid var(--rule);margin-top:34px;padding-top:14px;font-size:12px;color:var(--ink-60)}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+@media (max-width:900px){
+  .rules-head{display:none}
+  .rule-line{grid-template-columns:26px 1fr 1fr;gap:6px}
+  .rule-line .kill{grid-column:3;justify-self:end}
+}
+@media (max-width:640px){h1{font-size:36px}.rule-row{grid-template-columns:120px 1fr 70px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="placard">
+  <div class="placard-row">
+    <div>
+      <h1>OCC<span>ULAR</span></h1>
+      <div class="tag">Frame metadata check · oblique camera count</div>
+    </div>
+    <div class="stamp">
+      SESSION <b id="sessionId">—</b><br>
+      LOADED <b id="loadedCount">0</b> FRAMES<br>
+      PROFILE <b id="specStamp">Locked manual</b>
+    </div>
+  </div>
+</header>
+
+<!-- ================= INTAKE ================= -->
+<section>
+  <p class="eyebrow">Load frames</p>
+  <div id="drop">
+    <h2>Drop the flight folder here</h2>
+    <p>Read in the browser. Nothing is uploaded, nothing leaves this machine.</p>
+    <div class="drop-actions">
+      <button id="pickFiles" class="solid">Choose files</button>
+      <button id="pickFolder">Choose folder</button>
+      <button id="clearAll" class="ghost">Clear</button>
+      <label style="font-size:12.5px;color:var(--ink-60);display:flex;gap:6px;align-items:center;margin-left:6px">
+        <input type="checkbox" id="deepRead" style="accent-color:var(--ink)"> Deep read — every segment, incl. XMP and IPTC
+      </label>
+    </div>
+    <input id="fileInput" type="file" accept="image/*,.jpg,.jpeg,.tif,.tiff,.arw,.dng,.nef,.cr2,.cr3,.raf,.orf,.rw2,.heic" multiple class="hidden">
+    <input id="folderInput" type="file" webkitdirectory directory multiple class="hidden">
+    <div id="progress">
+      <div class="bar"><i id="barFill"></i></div>
+      <div class="progress-txt"><span id="progLabel">Reading…</span><span id="progCount">0 / 0</span></div>
+    </div>
+  </div>
+  <div id="loadErr" class="err hidden" style="margin-top:12px"></div>
+  <p class="note">Every tag the file carries is kept, not just the ones checked below. After loading, the
+    <b>Add check</b> list fills with whatever tags your camera actually wrote, so nothing is out of reach.</p>
+</section>
+
+<!-- ================= RULES ================= -->
+<section>
+  <p class="eyebrow">Checks</p>
+  <div class="card">
+    <div class="rules-head">
+      <div></div><div>Tag</div><div>Test</div><div>Value</div><div>Tolerance</div>
+      <div>If tag missing</div><div>Level</div><div></div>
+    </div>
+    <div id="ruleEditor"></div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <select id="profileSel" title="Starting profile">
+      <option value="locked">Profile · Locked manual</option>
+      <option value="autoiso">Profile · Auto-ISO tolerant</option>
+      <option value="autoall">Profile · Fully automatic camera</option>
+      <option value="inventory">Profile · Inventory only</option>
+    </select>
+    <select id="addTag"><option value="">Add check…</option></select>
+    <button id="applySpec" class="solid">Run checks</button>
+    <button id="saveSpec" class="ghost">Save profile</button>
+    <button id="loadSpecBtn" class="ghost">Load profile</button>
+    <input id="loadSpec" type="file" accept=".json" class="hidden">
+  </div>
+  <p class="note" id="medianNote"></p>
+</section>
+
+<!-- ================= RESULTS ================= -->
+<div id="results" class="hidden">
+
+  <section>
+    <p class="eyebrow">Verdict</p>
+    <div class="verdict">
+      <div class="v-cell"><div class="n" id="vTotal">0</div><div class="l">Frames read</div></div>
+      <div class="v-cell pass"><div class="n" id="vPass">0</div><div class="l">Pass</div></div>
+      <div class="v-cell warn"><div class="n" id="vWarn">0</div><div class="l">Check</div></div>
+      <div class="v-cell fail"><div class="n" id="vFail">0</div><div class="l">Fail</div></div>
+      <div class="v-cell"><div class="n" id="vGps">0</div><div class="l">With GPS fix</div></div>
+      <div class="v-cell"><div class="n" id="vDur">—</div><div class="l">Capture window</div></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Shutter distribution</p>
+    <div class="card scale-card">
+      <svg id="scale" viewBox="0 0 1000 150" preserveAspectRatio="none" role="img" aria-label="Shutter speed distribution"></svg>
+      <div class="scale-legend"><span>◀ slower · motion blur risk</span><span>faster ▶</span></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Results by check</p>
+    <div class="card" id="ruleBreak"></div>
+  </section>
+
+  <section>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-view="grid" aria-selected="true">Contact sheet</button>
+      <button class="tab" role="tab" data-view="table" aria-selected="false">Table</button>
+      <button class="tab" role="tab" data-view="map" aria-selected="false">Track</button>
+      <button class="tab" role="tab" data-view="preflight" aria-selected="false">Pre-flight sign-off</button>
+    </div>
+
+    <div class="filters">
+      <button class="filt solid" data-filt="all">All</button>
+      <button class="filt" data-filt="fail">Fail only</button>
+      <button class="filt" data-filt="warn">Check only</button>
+      <span class="sp"></span>
+      <button id="expAll" class="ghost">Export CSV</button>
+      <button id="expFail" class="ghost">Export failures</button>
+      <button id="expRaw" class="ghost">Export every tag</button>
+    </div>
+
+    <div id="viewGrid"><div id="grid"></div></div>
+
+    <div id="viewTable" class="hidden">
+      <div class="tablewrap"><table id="tbl">
+        <thead><tr id="tblHead"></tr></thead>
+        <tbody id="tblBody"></tbody>
+      </table></div>
+    </div>
+
+    <div id="viewMap" class="hidden">
+      <div id="map"></div>
+      <p class="map-note" id="mapNote">Green passes, amber needs a look, red breaks spec. The line follows
+        capture order, so a straight jump across the block is a dropped trigger run.</p>
+    </div>
+
+    <div id="viewPreflight" class="hidden">
+      <div class="card">
+        <div class="check-row"><input type="checkbox" id="ck1"><div>
+          <div class="t"><label for="ck1">Long Exposure NR — off</label></div>
+          <div class="d">Not written to standard EXIF by most bodies. Confirm on the camera before the wheels
+            leave the ground, then tick here so the attestation carries into the CSV.</div></div></div>
+        <div class="check-row"><input type="checkbox" id="ck2"><div>
+          <div class="t"><label for="ck2">SteadyShot / OSS / IBIS — off</label></div>
+          <div class="d">Stabilisation on a hard-mounted pod adds drift between frames. Vendor maker-note only,
+            so it stays a physical check.</div></div></div>
+        <div class="check-row"><input type="checkbox" id="ck3"><div>
+          <div class="t"><label for="ck3">Pod angle and lens locked</label></div>
+          <div class="d">Mount angle set and torqued, focus taped to infinity, zoom ring immobilised if not a prime.</div></div></div>
+        <div class="check-row"><input type="checkbox" id="ck4"><div>
+          <div class="t"><label for="ck4">Camera clock synced to GPS</label></div>
+          <div class="d">Frame timestamps drive the track and the gap check. Sync each survey day and note the offset.</div></div></div>
+        <div class="check-row"><input type="checkbox" id="ck5"><div>
+          <div class="t"><label for="ck5">Card formatted in camera, capacity checked</label></div>
+          <div class="d">Fresh card per sortie. Never reuse a card that has not been offloaded and checksummed.</div></div></div>
+        <div class="check-row"><input type="checkbox" id="ck6"><div>
+          <div class="t"><label for="ck6">Apron test burst passed</label></div>
+          <div class="d">Twenty frames on the ground, run through OCCULAR, clean sheet before departure.</div></div></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <input id="operator" type="text" placeholder="Operator name">
+        <input id="sortie" type="text" placeholder="Sortie / block ID">
+      </div>
+    </div>
+  </section>
+</div>
+
+<footer>
+  OCCULAR reads metadata locally with <b>exifr</b> and draws thumbnails from each file's embedded preview,
+  so a full sortie checks in seconds. Files are never transmitted.
+</footer>
+</div>
+
+<div id="drawer" role="dialog" aria-label="Frame detail">
+  <button class="close" id="closeDrawer">Close</button>
+  <h3 id="dName">—</h3>
+  <div class="sub" id="dSub">—</div>
+  <img id="dImg" alt="" class="hidden">
+  <div class="kv" id="dKv"></div>
+  <details class="raw"><summary>Every tag in this file</summary><div class="kv" id="dRaw"></div></details>
+</div>
+
+<script>
+/* =====================================================================
+   OCCULAR — configurable EXIF quality control for aerial camera counts
+   Single file. No build step. No backend. No uploads.
+   ===================================================================== */
+
+/* ---------- dependency loading ---------- */
+const EXIFR_URLS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/exifr/7.1.3/full.umd.min.js',
+  'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js',
+  'https://unpkg.com/exifr@7.1.3/dist/full.umd.js'
+];
+const LEAFLET_URLS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
+  'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js'
+];
+const loadScript = url => new Promise((res, rej) => {
+  const s = document.createElement('script');
+  s.src = url; s.async = true; s.onload = () => res(url);
+  s.onerror = () => rej(new Error(url)); document.head.appendChild(s);
+});
+async function loadFirstAvailable(urls){
+  for (const u of urls){ try { return await loadScript(u); } catch(e){} }
+  throw new Error('no CDN reachable');
+}
+const exifrReady = loadFirstAvailable(EXIFR_URLS).catch(() => {
+  showLoadError('Could not load the metadata reader from any CDN. Connect once so the browser caches it, or place exifr full.umd.js beside this file.');
+  throw new Error('exifr unavailable');
+});
+let leafletReady = null;
+
+/* ---------- state ---------- */
+let frames = [];        // parsed records
+let rules  = [];        // active checks
+let tagIndex = new Map();  // discovered tag -> {count, numeric, samples}
+let stats = {};         // per-tag medians for drift tests
+let filter = 'all', sortKey = 'time', sortDir = 1, currentView = 'grid';
+let map = null, mapLayer = null;
+
+const $ = id => document.getElementById(id);
+
+/* ---------- derived / normalised fields ---------- */
+/* These are computed for every file regardless of camera brand, so a check
+   can be written against a friendly name instead of a vendor tag. */
+const DERIVED = {
+  shutter:  {label:'Shutter',        kind:'shutter', unit:'s',  hint:'Enter as 1/1600 or 0.000625. Use “no slower than”.'},
+  iso:      {label:'ISO',            kind:'number',  unit:'',   hint:'Auto ISO writes the value actually used, so a range or drift test suits it better than an exact match.'},
+  aperture: {label:'Aperture',       kind:'number',  unit:'f/', hint:'EXIF rounds f/8 to 7.9 or 8.1 — keep a tolerance of about 0.2.'},
+  focal:    {label:'Focal length',   kind:'number',  unit:'mm', hint:'Zoom lenses drift. Use a range if the pod is not a prime.'},
+  wb:       {label:'White balance',  kind:'enum',    unit:'',   hint:'Normalised to auto or manual across all brands.'},
+  expMode:  {label:'Exposure mode',  kind:'enum',    unit:'',   hint:'manual, auto, aperture-priority, shutter-priority — normalised.'},
+  gpsFix:   {label:'GPS fix',        kind:'enum',    unit:'',   hint:'present or missing.'},
+  gap:      {label:'Trigger gap',    kind:'number',  unit:'s',  hint:'Seconds since the previous frame. Leave on drift to derive the expected interval from this flight.'},
+  evComp:   {label:'Exposure comp.', kind:'number',  unit:'EV', hint:''},
+  width:    {label:'Image width',    kind:'number',  unit:'px', hint:''},
+  height:   {label:'Image height',   kind:'number',  unit:'px', hint:''},
+  model:    {label:'Camera model',   kind:'text',    unit:'',   hint:'Catches a body swap mid-survey.'},
+  lens:     {label:'Lens',           kind:'text',    unit:'',   hint:''}
+};
+
+/* ---------- tests available per kind ---------- */
+const TESTS = {
+  ignore:  {label:'not checked', kinds:['shutter','number','enum','text']},
+  atMost:  {label:'no slower than',kinds:['shutter']},
+  atLeast: {label:'no faster than',kinds:['shutter']},
+  exact:   {label:'equals',      kinds:['shutter','number','enum','text']},
+  oneOf:   {label:'is one of',   kinds:['shutter','number','enum','text']},
+  min:     {label:'at least',    kinds:['number']},
+  max:     {label:'at most',     kinds:['number']},
+  range:   {label:'between',     kinds:['shutter','number']},
+  drift:   {label:'stays near flight median', kinds:['shutter','number']},
+  contains:{label:'contains text', kinds:['text','enum']},
+  present: {label:'is present',  kinds:['shutter','number','enum','text']}
+};
+
+/* ---------- profiles ---------- */
+function profile(name){
+  const R = (tag, test, value, tol, onMissing, severity, extra) =>
+    Object.assign({tag, test, value: value ?? '', tol: tol ?? '', onMissing: onMissing || 'warn',
+      severity: severity || 'fail', on: true}, extra || {});
+  switch(name){
+    case 'autoiso': return [
+      R('shutter','atMost','1/1600','','warn','fail'),
+      R('iso','range','200, 1600','','warn','fail'),
+      R('iso','drift','','1.5','ignore','warn'),
+      R('aperture','exact','8','0.2','warn','fail'),
+      R('focal','exact','50','0.6','warn','fail'),
+      R('wb','oneOf','manual, auto','','warn','warn'),
+      R('gpsFix','exact','present','','warn','warn'),
+      R('gap','drift','','1.8','ignore','fail')
+    ];
+    case 'autoall': return [
+      R('shutter','atMost','1/1000','','warn','fail'),
+      R('iso','max','3200','','warn','warn'),
+      R('aperture','range','5.6, 11','','warn','warn'),
+      R('focal','drift','','0.1','warn','warn'),
+      R('gpsFix','exact','present','','warn','warn'),
+      R('gap','drift','','1.8','ignore','fail'),
+      R('model','present','','','warn','warn')
+    ];
+    case 'inventory': return [
+      R('gpsFix','exact','present','','warn','warn'),
+      R('gap','drift','','2.0','ignore','warn')
+    ];
+    default: return [
+      R('shutter','atMost','1/1600','','warn','fail'),
+      R('iso','exact','800','0','warn','fail'),
+      R('aperture','exact','8','0.2','warn','fail'),
+      R('focal','exact','50','0.6','warn','fail'),
+      R('wb','exact','manual','','warn','fail'),
+      R('expMode','exact','manual','','ignore','warn'),
+      R('gpsFix','exact','present','','warn','warn'),
+      R('gap','drift','','1.8','ignore','fail')
+    ];
+  }
+}
+
+/* ---------- helpers ---------- */
+function parseShutter(txt){
+  if (txt == null) return null;
+  const s = String(txt).trim();
+  if (!s) return null;
+  if (s.includes('/')){ const [a,b] = s.split('/').map(Number); return b ? a/b : null; }
+  const n = Number(s); return isFinite(n) && n > 0 ? n : null;
+}
+function fmtShutter(sec){
+  if (sec == null) return '—';
+  return sec >= 1 ? sec.toFixed(1)+'s' : '1/' + Math.round(1/sec);
+}
+const fmtTime = d => d ? d.toISOString().replace('T',' ').slice(0,19) : '—';
+function showLoadError(msg){ const el = $('loadErr'); el.textContent = msg; el.classList.remove('hidden'); }
+function kindOf(tag){
+  if (DERIVED[tag]) return DERIVED[tag].kind;
+  const t = tagIndex.get(tag);
+  return t && t.numeric ? 'number' : 'text';
+}
+function labelOf(tag){ return DERIVED[tag] ? DERIVED[tag].label : tag; }
+function median(arr){
+  const a = arr.filter(v => typeof v === 'number' && isFinite(v)).sort((x,y)=>x-y);
+  return a.length ? a[Math.floor(a.length/2)] : null;
+}
+
+/* ---------- reading ---------- */
+async function readFile(file, deep){
+  let x = null, err = null;
+  try {
+    x = deep ? await exifr.parse(file, true)
+             : await exifr.parse(file, {tiff:true, ifd0:true, exif:true, gps:true,
+                                        interop:true, translateValues:true, reviveValues:true});
+  } catch(e){ err = e.message; }
+  x = x || {};
+
+  // normalise white balance and exposure mode across brands
+  let wb = null;
+  const wbRaw = x.WhiteBalance;
+  if (wbRaw != null) wb = typeof wbRaw === 'number' ? (wbRaw === 0 ? 'auto' : 'manual')
+                                                   : (String(wbRaw).toLowerCase().includes('auto') ? 'auto' : 'manual');
+  let expMode = null;
+  const em = x.ExposureMode ?? x.ExposureProgram;
+  if (em != null){
+    const s = String(em).toLowerCase();
+    expMode = s.includes('manual') || em === 1 ? 'manual'
+      : s.includes('aperture') ? 'aperture-priority'
+      : s.includes('shutter') ? 'shutter-priority'
+      : s.includes('auto') || em === 0 || em === 2 ? 'auto' : s;
+  }
+  const iso = x.ISO ?? x.ISOSpeedRatings ?? x.PhotographicSensitivity ?? x.RecommendedExposureIndex ?? null;
+
+  return {
+    name:file.name, path:file.webkitRelativePath || file.name, size:file.size, file,
+    shutter: typeof x.ExposureTime === 'number' ? x.ExposureTime : null,
+    iso: typeof iso === 'number' ? iso : null,
+    aperture: typeof x.FNumber === 'number' ? x.FNumber : null,
+    focal: typeof x.FocalLength === 'number' ? x.FocalLength : null,
+    wb, expMode,
+    evComp: typeof x.ExposureCompensation === 'number' ? x.ExposureCompensation : null,
+    width: x.ExifImageWidth ?? x.ImageWidth ?? null,
+    height: x.ExifImageHeight ?? x.ImageHeight ?? null,
+    model: [x.Make, x.Model].filter(Boolean).join(' ') || null,
+    lens: x.LensModel || x.LensID || x.Lens || null,
+    time: x.DateTimeOriginal instanceof Date ? x.DateTimeOriginal
+        : (x.CreateDate instanceof Date ? x.CreateDate : null),
+    lat: typeof x.latitude === 'number' ? x.latitude : null,
+    lon: typeof x.longitude === 'number' ? x.longitude : null,
+    alt: typeof x.GPSAltitude === 'number' ? x.GPSAltitude : null,
+    gpsFix: (typeof x.latitude === 'number' && typeof x.longitude === 'number') ? 'present' : 'missing',
+    raw: x, readError: err, gap:null, checks:[], status:'unknown'
+  };
+}
+
+async function readAll(fileList){
+  const files = Array.from(fileList).filter(f =>
+    /\.(jpe?g|tiff?|arw|dng|nef|cr[23]|raf|orf|rw2|heic|png|webp)$/i.test(f.name));
+  if (!files.length){ showLoadError('No image files found in that selection.'); return; }
+  $('loadErr').classList.add('hidden');
+  $('progress').style.display = 'block';
+  $('progLabel').textContent = 'Reading metadata…';
+  try { await exifrReady; } catch(e){ $('progress').style.display='none'; return; }
+
+  const deep = $('deepRead').checked;
+  const out = new Array(files.length);
+  let done = 0, next = 0;
+  async function worker(){
+    while (next < files.length){
+      const i = next++;
+      out[i] = await readFile(files[i], deep);
+      done++;
+      if (done % 20 === 0 || done === files.length){
+        $('barFill').style.width = (done/files.length*100).toFixed(1)+'%';
+        $('progCount').textContent = `${done} / ${files.length}`;
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+  }
+  await Promise.all(Array.from({length: Math.min(12, files.length)}, worker));
+
+  frames = out.filter(Boolean);
+  frames.sort((a,b) => (a.time?.getTime() ?? 0) - (b.time?.getTime() ?? 0));
+  $('progress').style.display = 'none';
+  $('loadedCount').textContent = frames.length;
+  $('sessionId').textContent = new Date().toISOString().slice(0,16).replace('T','·');
+  indexTags();
+  evaluate();
+}
+
+/* Every tag seen anywhere in the set becomes available as a check. */
+function indexTags(){
+  tagIndex = new Map();
+  frames.forEach(f => {
+    for (const [k,v] of Object.entries(f.raw || {})){
+      if (v == null || typeof v === 'object' && !(v instanceof Date)) continue;
+      let e = tagIndex.get(k);
+      if (!e){ e = {count:0, numeric:true, sample:v}; tagIndex.set(k, e); }
+      e.count++;
+      if (typeof v !== 'number') e.numeric = false;
+    }
+  });
+  const sel = $('addTag');
+  sel.innerHTML = '<option value="">Add check…</option>';
+  const g1 = document.createElement('optgroup'); g1.label = 'Normalised';
+  Object.keys(DERIVED).forEach(k => {
+    const o = document.createElement('option'); o.value = k;
+    o.textContent = `${DERIVED[k].label}`; g1.appendChild(o);
+  });
+  sel.appendChild(g1);
+  const g2 = document.createElement('optgroup');
+  g2.label = `Tags found in these files (${tagIndex.size})`;
+  [...tagIndex.entries()].sort((a,b) => b[1].count - a[1].count).forEach(([k,e]) => {
+    const o = document.createElement('option'); o.value = k;
+    o.textContent = `${k} — ${Math.round(e.count/frames.length*100)}% of frames`;
+    g2.appendChild(o);
+  });
+  sel.appendChild(g2);
+}
+
+/* ---------- rule evaluation ---------- */
+function valueOf(f, tag){
+  if (tag in DERIVED) return f[tag] ?? null;
+  const v = f.raw ? f.raw[tag] : undefined;
+  return v === undefined ? null : v;
+}
+function parseNums(str, kind){
+  return String(str).split(/[,;]/).map(s => s.trim()).filter(Boolean)
+    .map(s => kind === 'shutter' ? parseShutter(s) : Number(s))
+    .filter(n => n != null && isFinite(n));
+}
+function evalRule(f, r){
+  if (!r.on || r.test === 'ignore') return 'pass';
+  const kind = kindOf(r.tag);
+  let v = valueOf(f, r.tag);
+  if (v == null || v === '') return r.onMissing === 'ignore' ? 'pass'
+                             : r.onMissing === 'fail' ? 'fail' : 'warn';
+  if (r.test === 'present') return 'pass';
+
+  const bad = r.severity === 'warn' ? 'warn' : 'fail';
+  const tol = Number(r.tol) || 0;
+
+  if (kind === 'text' || kind === 'enum'){
+    const s = String(v).toLowerCase().trim();
+    if (r.test === 'exact')    return s === String(r.value).toLowerCase().trim() ? 'pass' : bad;
+    if (r.test === 'oneOf')    return String(r.value).split(/[,;]/).map(x=>x.toLowerCase().trim())
+                                     .includes(s) ? 'pass' : bad;
+    if (r.test === 'contains') return s.includes(String(r.value).toLowerCase().trim()) ? 'pass' : bad;
+    return 'pass';
+  }
+
+  const num = typeof v === 'number' ? v : Number(v);
+  if (!isFinite(num)) return 'warn';
+  const targets = parseNums(r.value, kind);
+
+  switch(r.test){
+    case 'atMost':  return targets.length && num <= targets[0]*1.001 ? 'pass'
+                         : (targets.length && num <= targets[0]*1.35 ? 'warn' : bad);
+    case 'atLeast': return targets.length && num >= targets[0]*0.999 ? 'pass' : bad;
+    case 'exact':   return targets.length && Math.abs(num - targets[0]) <= (tol || 1e-9) ? 'pass' : bad;
+    case 'oneOf':   return targets.some(t => Math.abs(num - t) <= (tol || 1e-9)) ? 'pass' : bad;
+    case 'min':     return targets.length && num >= targets[0] - tol ? 'pass' : bad;
+    case 'max':     return targets.length && num <= targets[0] + tol ? 'pass' : bad;
+    case 'range': {
+      if (targets.length < 2) return 'warn';
+      const [lo,hi] = [Math.min(...targets), Math.max(...targets)];
+      return num >= lo - tol && num <= hi + tol ? 'pass' : bad;
+    }
+    case 'drift': {
+      const m = stats[r.tag];
+      if (m == null || m === 0) return 'warn';
+      if (r.tag === 'gap') return num <= m * (tol || 1.8) ? 'pass' : bad;       // tol = multiple of median
+      if (kind === 'shutter' || r.tag === 'iso')                                 // tol = stops
+        return Math.abs(Math.log2(num/m)) <= (tol || 1) ? 'pass' : bad;
+      return Math.abs(num - m) <= (tol || Math.abs(m)*0.1) ? 'pass' : bad;       // tol = absolute
+    }
+    default: return 'pass';
+  }
+}
+
+function computeStats(){
+  stats = {};
+  const gaps = [];
+  frames.forEach((f,i) => {
+    f.gap = (i > 0 && f.time && frames[i-1].time) ? (f.time - frames[i-1].time)/1000 : null;
+    if (f.gap != null && f.gap > 0 && f.gap < 900) gaps.push(f.gap);
+  });
+  stats.gap = median(gaps);
+  ['shutter','iso','aperture','focal','evComp','width','height'].forEach(k =>
+    stats[k] = median(frames.map(f => f[k])));
+  tagIndex.forEach((e,k) => { if (e.numeric) stats[k] = median(frames.map(f => f.raw?.[k])); });
+  $('medianNote').innerHTML = stats.gap
+    ? `Flight median trigger interval <b>${stats.gap.toFixed(1)} s</b> · median ISO <b>${stats.iso ?? '—'}</b> · median shutter <b>${fmtShutter(stats.shutter)}</b>. Drift tests measure against these.`
+    : '';
+}
+
+function evaluate(){
+  if (!frames.length) return;
+  computeStats();
+  frames.forEach(f => {
+    f.checks = rules.map(r => ({id:r.tag + ':' + r.test, result: evalRule(f, r)}));
+    const res = f.checks.map(c => c.result);
+    f.status = res.includes('fail') ? 'fail' : res.includes('warn') ? 'warn' : 'pass';
+  });
+  $('results').classList.remove('hidden');
+  renderVerdict(); renderScale(); renderRuleResults(); renderCurrentView();
+}
+
+/* ---------- rule editor UI ---------- */
+function renderRuleEditor(){
+  const box = $('ruleEditor'); box.innerHTML = '';
+  rules.forEach((r, i) => {
+    const kind = kindOf(r.tag);
+    const line = document.createElement('div');
+    line.className = 'rule-line' + (r.on && r.test !== 'ignore' ? '' : ' off');
+
+    const tests = Object.entries(TESTS).filter(([k,t]) => t.kinds.includes(kind));
+    const needsValue = !['ignore','present','drift'].includes(r.test);
+    const needsTol = ['exact','oneOf','min','max','range','drift'].includes(r.test);
+    const tolPlaceholder = r.test === 'drift'
+      ? (r.tag === 'gap' ? '× median' : (kind === 'shutter' || r.tag === 'iso' ? '± stops' : '± abs'))
+      : '±';
+
+    line.innerHTML = `
+      <input type="checkbox" ${r.on ? 'checked':''} data-i="${i}" data-f="on" title="Enable this check">
+      <div class="lab">${labelOf(r.tag)}<small>${r.tag in DERIVED ? 'normalised' : 'raw tag'}</small></div>
+      <select data-i="${i}" data-f="test">
+        ${tests.map(([k,t]) => `<option value="${k}" ${r.test===k?'selected':''}>${t.label}</option>`).join('')}
+      </select>
+      <input type="text" data-i="${i}" data-f="value" value="${r.value ?? ''}"
+        placeholder="${r.test==='range'?'low, high':(r.test==='oneOf'?'a, b, c':'value')}" ${needsValue?'':'disabled'}>
+      <input type="text" data-i="${i}" data-f="tol" value="${r.tol ?? ''}"
+        placeholder="${tolPlaceholder}" ${needsTol?'':'disabled'}>
+      <select data-i="${i}" data-f="onMissing">
+        <option value="warn" ${r.onMissing==='warn'?'selected':''}>flag as check</option>
+        <option value="ignore" ${r.onMissing==='ignore'?'selected':''}>skip it</option>
+        <option value="fail" ${r.onMissing==='fail'?'selected':''}>fail it</option>
+      </select>
+      <select data-i="${i}" data-f="severity">
+        <option value="fail" ${r.severity==='fail'?'selected':''}>fail</option>
+        <option value="warn" ${r.severity==='warn'?'selected':''}>check</option>
+      </select>
+      <button class="kill" data-i="${i}" data-f="remove" title="Remove this check">×</button>`;
+    box.appendChild(line);
+
+    const hint = DERIVED[r.tag]?.hint;
+    if (hint && r.on){
+      const h = document.createElement('div');
+      h.className = 'rule-line'; h.style.paddingTop = '0'; h.style.borderBottom = 'none';
+      h.innerHTML = `<div></div><div class="hint">${hint}</div>`;
+      box.appendChild(h);
+    }
+  });
+
+  box.querySelectorAll('[data-f]').forEach(el => {
+    const i = Number(el.dataset.i), f = el.dataset.f;
+    if (f === 'remove'){ el.onclick = () => { rules.splice(i,1); renderRuleEditor(); }; return; }
+    el.onchange = () => {
+      rules[i][f] = (f === 'on') ? el.checked : el.value;
+      renderRuleEditor();
+      if (frames.length) evaluate();
+    };
+  });
+}
+
+/* ---------- rendering ---------- */
+function renderVerdict(){
+  const n = frames.length;
+  $('vTotal').textContent = n;
+  $('vPass').textContent = frames.filter(f=>f.status==='pass').length;
+  $('vWarn').textContent = frames.filter(f=>f.status==='warn').length;
+  $('vFail').textContent = frames.filter(f=>f.status==='fail').length;
+  $('vGps').textContent  = frames.filter(f=>f.lat!=null).length;
+  const t = frames.map(f=>f.time).filter(Boolean);
+  if (t.length > 1){
+    const m = Math.round((t[t.length-1]-t[0])/60000);
+    $('vDur').textContent = m >= 60 ? `${Math.floor(m/60)}h ${m%60}m` : `${m}m`;
+  } else $('vDur').textContent = '—';
+}
+
+function renderScale(){
+  const svg = $('scale'), W = 1000, base = 118, padL = 30, padR = 30;
+  const denoms = [30,60,125,250,500,1000,1600,2000,4000,8000];
+  const lo = Math.log2(25), hi = Math.log2(10000);
+  const x = d => padL + (Math.log2(d)-lo)/(hi-lo)*(W-padL-padR);
+
+  const shutterRule = rules.find(r => r.tag === 'shutter' && r.on && ['atMost','range','exact'].includes(r.test));
+  const specSec = shutterRule ? parseNums(shutterRule.value,'shutter')[0] : null;
+  const specDen = specSec ? 1/specSec : null;
+
+  const bins = new Map();
+  frames.forEach(f => {
+    if (!f.shutter) return;
+    const key = Math.round(Math.log2(1/f.shutter)*6)/6;
+    bins.set(key, (bins.get(key)||0)+1);
+  });
+  const maxN = Math.max(1, ...bins.values());
+
+  let s = '';
+  if (specDen) s += `<rect x="${padL}" y="10" width="${Math.max(0,x(specDen)-padL)}" height="${base-10}" fill="var(--fail-bg)"/>`;
+  s += `<line x1="${padL}" y1="${base}" x2="${W-padR}" y2="${base}" stroke="var(--ink)"/>`;
+  denoms.forEach(d => {
+    const px = x(d);
+    s += `<line x1="${px}" y1="${base}" x2="${px}" y2="${base+6}" stroke="var(--ink-30)"/>
+          <text x="${px}" y="${base+22}" font-family="IBM Plex Mono,monospace" font-size="11"
+            fill="var(--ink-60)" text-anchor="middle">1/${d}</text>`;
+  });
+  bins.forEach((count,key) => {
+    const d = Math.pow(2,key), px = x(d);
+    if (px < padL-5 || px > W-padR+5) return;
+    const h = (count/maxN)*(base-26);
+    const col = !specDen ? 'var(--ink)'
+      : d >= specDen*0.999 ? 'var(--pass)' : (d >= specDen/1.35 ? 'var(--warn)' : 'var(--fail)');
+    s += `<rect x="${px-4}" y="${base-h}" width="8" height="${h}" fill="${col}" opacity="0.88"/>`;
+  });
+  if (specDen){
+    const sx = x(specDen);
+    s += `<line x1="${sx}" y1="4" x2="${sx}" y2="${base}" stroke="var(--ink)" stroke-width="2" stroke-dasharray="5 4"/>
+          <text x="${sx+7}" y="18" font-family="Barlow Condensed,sans-serif" font-size="14"
+            letter-spacing="2" fill="var(--ink)">SPEC ${fmtShutter(specSec)}</text>`;
+  } else {
+    s += `<text x="${padL}" y="18" font-family="Barlow Condensed,sans-serif" font-size="14"
+            letter-spacing="2" fill="var(--ink-60)">NO SHUTTER LIMIT SET — DISTRIBUTION ONLY</text>`;
+  }
+  svg.innerHTML = s;
+}
+
+function renderRuleResults(){
+  const box = $('ruleBreak'); box.innerHTML = '';
+  rules.forEach((r, idx) => {
+    if (!r.on || r.test === 'ignore') return;
+    const tally = {pass:0,warn:0,fail:0};
+    frames.forEach(f => { const res = f.checks[idx]?.result || 'warn'; tally[res]++; });
+    const n = frames.length || 1;
+    const row = document.createElement('div');
+    row.className = 'rule-row';
+    row.innerHTML = `
+      <div class="rule-name">${labelOf(r.tag)}<small>${TESTS[r.test].label} ${r.value||''}</small></div>
+      <div class="track">
+        <i class="p" style="width:${tally.pass/n*100}%"></i>
+        <i class="w" style="width:${tally.warn/n*100}%"></i>
+        <i class="f" style="width:${tally.fail/n*100}%"></i>
+      </div>
+      <div class="rule-num">${tally.fail ? tally.fail+' fail' : (tally.warn ? tally.warn+' check' : 'clean')}</div>`;
+    box.appendChild(row);
+  });
+  if (!box.children.length) box.innerHTML = '<div class="rule-row"><div class="rule-name">No active checks</div><div></div><div></div></div>';
+}
+
+const visibleFrames = () => filter === 'all' ? frames : frames.filter(f => f.status === filter);
+
+const thumbObserver = new IntersectionObserver(async entries => {
+  for (const e of entries){
+    if (!e.isIntersecting) continue;
+    thumbObserver.unobserve(e.target);
+    const f = frames[Number(e.target.dataset.idx)];
+    try { const u = await exifr.thumbnailUrl(f.file); if (u) e.target.querySelector('img').src = u; }
+    catch(_){}
+  }
+}, {rootMargin:'300px'});
+
+function renderGrid(){
+  const g = $('grid'); g.innerHTML = '';
+  const list = visibleFrames();
+  list.forEach(f => {
+    const b = document.createElement('button');
+    b.className = 'frame ' + f.status;
+    b.dataset.idx = frames.indexOf(f);
+    b.innerHTML = `<img class="thumb" alt=""><div class="fn">${f.name}</div>`;
+    b.onclick = () => openDrawer(Number(b.dataset.idx));
+    g.appendChild(b); thumbObserver.observe(b);
+  });
+  if (!list.length) g.innerHTML = '<p style="color:var(--ink-60)">Nothing in this filter. Good news, if you were looking at failures.</p>';
+}
+
+function tableColumns(){
+  const base = [
+    {k:'name', h:'File', v:f=>f.name},
+    {k:'time', h:'Captured', v:f=>fmtTime(f.time)}
+  ];
+  const active = rules.filter(r => r.on && r.test !== 'ignore');
+  active.forEach((r, i) => base.push({
+    k:'r'+i, h:labelOf(r.tag), rule:i, tag:r.tag,
+    v:f => {
+      const val = valueOf(f, r.tag);
+      if (val == null) return '—';
+      if (kindOf(r.tag) === 'shutter') return fmtShutter(val);
+      if (typeof val === 'number') return Math.abs(val) < 10 ? val.toFixed(2) : val.toFixed(0);
+      return String(val).slice(0,26);
+    }
+  }));
+  base.push({k:'gap', h:'Gap s', v:f=>f.gap!=null?f.gap.toFixed(1):'—'});
+  base.push({k:'lat', h:'Lat', v:f=>f.lat!=null?f.lat.toFixed(5):'—'});
+  base.push({k:'lon', h:'Lon', v:f=>f.lon!=null?f.lon.toFixed(5):'—'});
+  base.push({k:'status', h:'Verdict', v:f=>f.status});
+  return base;
+}
+function renderTable(){
+  const cols = tableColumns();
+  $('tblHead').innerHTML = cols.map(c=>`<th data-sort="${c.tag||c.k}">${c.h}</th>`).join('');
+  const list = visibleFrames().slice().sort((a,b)=>{
+    const va = (sortKey in a) ? a[sortKey] : valueOf(a,sortKey);
+    const vb = (sortKey in b) ? b[sortKey] : valueOf(b,sortKey);
+    if (va == null) return 1; if (vb == null) return -1;
+    return (va > vb ? 1 : va < vb ? -1 : 0) * sortDir;
+  });
+  $('tblBody').innerHTML = list.map(f => {
+    const idx = frames.indexOf(f);
+    const tds = cols.map(c => {
+      let cls = '';
+      if (c.rule != null){
+        const res = f.checks[rules.indexOf(rules.filter(r=>r.on&&r.test!=='ignore')[c.rule])]?.result;
+        cls = res === 'fail' ? 'bad' : res === 'warn' ? 'mid' : '';
+      }
+      return `<td class="${cls}">${c.v(f)}</td>`;
+    }).join('');
+    return `<tr class="${f.status}" data-idx="${idx}" style="cursor:pointer">${tds}</tr>`;
+  }).join('');
+  $('tblBody').querySelectorAll('tr').forEach(tr => tr.onclick = () => openDrawer(Number(tr.dataset.idx)));
+  $('tblHead').querySelectorAll('th').forEach(th => th.onclick = () => {
+    const k = th.dataset.sort; sortDir = (k === sortKey) ? -sortDir : 1; sortKey = k; renderTable();
+  });
+}
+
+async function renderMap(){
+  const pts = visibleFrames().filter(f => f.lat != null && f.lon != null);
+  if (!pts.length){
+    $('mapNote').textContent = 'No GPS in these frames. Either the body has no receiver or the geotag link was down — check the hot-shoe module before the next sortie.';
+    return;
+  }
+  if (!leafletReady) leafletReady = loadFirstAvailable(LEAFLET_URLS);
+  try { await leafletReady; } catch(e){
+    $('mapNote').textContent = 'Map library unavailable offline. The Track tab needs one online session to cache Leaflet; the CSV still carries every coordinate.';
+    return;
+  }
+  if (!map){
+    map = L.map('map');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {maxZoom:18, attribution:'© OpenStreetMap'}).addTo(map);
+  }
+  if (mapLayer) map.removeLayer(mapLayer);
+  mapLayer = L.layerGroup().addTo(map);
+  const colour = {pass:'#2E7D5B', warn:'#B8860F', fail:'#A8352F', unknown:'#93A0A6'};
+  L.polyline(pts.map(f=>[f.lat,f.lon]), {color:'#1B2A33', weight:1, opacity:.45}).addTo(mapLayer);
+  pts.forEach(f => L.circleMarker([f.lat,f.lon], {radius:4, color:colour[f.status],
+      fillColor:colour[f.status], fillOpacity:.85, weight:1})
+    .bindPopup(`<b>${f.name}</b><br>${fmtShutter(f.shutter)} · ISO ${f.iso ?? '—'} · f/${f.aperture ?? '—'}<br>${f.status.toUpperCase()}`)
+    .addTo(mapLayer));
+  map.fitBounds(L.latLngBounds(pts.map(f=>[f.lat,f.lon])).pad(0.08));
+  setTimeout(()=>map.invalidateSize(), 60);
+}
+
+function renderCurrentView(){
+  if (currentView === 'grid') renderGrid();
+  else if (currentView === 'table') renderTable();
+  else if (currentView === 'map') renderMap();
+}
+
+/* ---------- drawer ---------- */
+async function openDrawer(idx){
+  const f = frames[idx];
+  $('dName').textContent = f.path;
+  $('dSub').textContent = [f.model, f.lens].filter(Boolean).join(' · ') || 'Camera not identified';
+  const img = $('dImg'); img.classList.add('hidden');
+  try { const u = await exifr.thumbnailUrl(f.file); if (u){ img.src = u; img.classList.remove('hidden'); } }
+  catch(_){}
+  const badge = s => s==='fail'?'bad':s==='warn'?'mid':'ok';
+  let rows = [['Verdict', f.status.toUpperCase(), badge(f.status)], ['Captured', fmtTime(f.time), '']];
+  rules.forEach((r,i) => {
+    if (!r.on || r.test === 'ignore') return;
+    let v = valueOf(f, r.tag);
+    v = v == null ? '—' : (kindOf(r.tag)==='shutter' ? fmtShutter(v) : String(v));
+    rows.push([labelOf(r.tag), v, badge(f.checks[i]?.result)]);
+  });
+  rows.push(['Gap to previous', f.gap!=null?f.gap.toFixed(1)+' s':'—','']);
+  rows.push(['Latitude', f.lat!=null?f.lat.toFixed(6):'—','']);
+  rows.push(['Longitude', f.lon!=null?f.lon.toFixed(6):'—','']);
+  rows.push(['GPS altitude', f.alt!=null?f.alt.toFixed(0)+' m':'—','']);
+  rows.push(['File size', (f.size/1048576).toFixed(1)+' MB','']);
+  $('dKv').innerHTML = rows.map(r=>`<div class="k">${r[0]}</div><div class="v ${r[2]}">${r[1]}</div>`).join('');
+  $('dRaw').innerHTML = Object.entries(f.raw||{})
+    .filter(([k,v]) => v != null && (typeof v !== 'object' || v instanceof Date))
+    .sort((a,b)=>a[0].localeCompare(b[0]))
+    .map(([k,v]) => `<div class="k">${k}</div><div class="v">${v instanceof Date ? fmtTime(v) : String(v).slice(0,60)}</div>`)
+    .join('');
+  $('drawer').classList.add('open');
+}
+
+/* ---------- export ---------- */
+function metaBlock(){
+  const active = rules.filter(r=>r.on && r.test!=='ignore')
+    .map(r => `${r.tag} ${TESTS[r.test].label} ${r.value||''}${r.tol?' ±'+r.tol:''} [${r.severity}]`);
+  return ['# OCCULAR frame check',
+    `# generated,${new Date().toISOString()}`,
+    `# operator,${$('operator').value || 'unsigned'}`,
+    `# sortie,${$('sortie').value || 'unlabelled'}`,
+    ...active.map((a,i) => `# check_${i+1},"${a}"`),
+    `# preflight_long_exposure_nr_off,${$('ck1').checked}`,
+    `# preflight_stabilisation_off,${$('ck2').checked}`,
+    `# preflight_pod_locked,${$('ck3').checked}`,
+    `# preflight_clock_synced,${$('ck4').checked}`,
+    `# preflight_card_fresh,${$('ck5').checked}`,
+    `# preflight_apron_test,${$('ck6').checked}`].join('\n');
+}
+const esc = v => { const s = v==null?'':String(v); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
+
+function toCSV(list){
+  const active = rules.filter(r=>r.on && r.test!=='ignore');
+  const head = ['file','path','captured','shutter','shutter_seconds','iso','aperture','focal_mm',
+    'white_balance','exposure_mode','gap_s','latitude','longitude','altitude_m','camera','lens',
+    ...active.map(r => 'chk_' + r.tag), 'verdict'];
+  const body = list.map(f => {
+    const ci = rules.map((r,i)=>i).filter(i => rules[i].on && rules[i].test!=='ignore');
+    return [f.name,f.path,fmtTime(f.time),fmtShutter(f.shutter),f.shutter??'',f.iso??'',f.aperture??'',
+      f.focal??'',f.wb??'',f.expMode??'',f.gap!=null?f.gap.toFixed(2):'',f.lat??'',f.lon??'',f.alt??'',
+      f.model??'',f.lens??'', ...ci.map(i => f.checks[i]?.result ?? ''), f.status].map(esc).join(',');
+  }).join('\n');
+  return metaBlock()+'\n'+head.join(',')+'\n'+body;
+}
+function toRawCSV(){
+  const keys = [...tagIndex.keys()].sort();
+  const head = ['file','verdict',...keys];
+  const body = frames.map(f => [f.name, f.status, ...keys.map(k => {
+    const v = f.raw?.[k]; return v instanceof Date ? fmtTime(v) : (v ?? '');
+  })].map(esc).join(',')).join('\n');
+  return metaBlock()+'\n'+head.join(',')+'\n'+body;
+}
+function download(text, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type:'text/csv;charset=utf-8'}));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ---------- wiring ---------- */
+$('pickFiles').onclick = () => $('fileInput').click();
+$('pickFolder').onclick = () => $('folderInput').click();
+$('fileInput').onchange = e => readAll(e.target.files);
+$('folderInput').onchange = e => readAll(e.target.files);
+$('clearAll').onclick = () => {
+  frames = []; tagIndex = new Map(); $('results').classList.add('hidden');
+  $('loadedCount').textContent = '0'; $('grid').innerHTML = '';
+  $('fileInput').value=''; $('folderInput').value='';
+};
+
+const drop = $('drop');
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('hot'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); if (ev==='dragleave') drop.classList.remove('hot'); }));
+drop.addEventListener('drop', async e => {
+  drop.classList.remove('hot');
+  const items = e.dataTransfer.items;
+  if (items && items.length && items[0].webkitGetAsEntry){
+    const files = [];
+    const walk = entry => new Promise(res => {
+      if (entry.isFile) entry.file(f => { files.push(f); res(); });
+      else if (entry.isDirectory){
+        const rd = entry.createReader();
+        const batch = () => rd.readEntries(async ents => {
+          if (!ents.length) return res();
+          await Promise.all(ents.map(walk)); batch();
+        });
+        batch();
+      } else res();
+    });
+    await Promise.all(Array.from(items).map(i => { const en = i.webkitGetAsEntry(); return en ? walk(en) : Promise.resolve(); }));
+    readAll(files);
+  } else readAll(e.dataTransfer.files);
+});
+
+$('profileSel').onchange = e => {
+  rules = profile(e.target.value);
+  $('specStamp').textContent = e.target.selectedOptions[0].textContent.replace('Profile · ','');
+  renderRuleEditor(); if (frames.length) evaluate();
+};
+$('addTag').onchange = e => {
+  const tag = e.target.value; if (!tag) return;
+  const kind = kindOf(tag);
+  rules.push({tag, test: kind==='number'||kind==='shutter' ? 'range' : 'exact',
+    value:'', tol:'', onMissing:'warn', severity:'warn', on:true});
+  e.target.value = '';
+  renderRuleEditor(); if (frames.length) evaluate();
+};
+$('applySpec').onclick = () => evaluate();
+$('saveSpec').onclick = () => download(JSON.stringify({version:2, rules}, null, 2), 'occular-profile.json');
+$('loadSpecBtn').onclick = () => $('loadSpec').click();
+$('loadSpec').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const o = JSON.parse(await f.text());
+    rules = Array.isArray(o) ? o : o.rules;
+    $('specStamp').textContent = 'custom';
+    renderRuleEditor(); if (frames.length) evaluate();
+  } catch(_){ showLoadError('That profile file could not be read. Expected the JSON produced by Save profile.'); }
+};
+
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected','false'));
+  t.setAttribute('aria-selected','true');
+  currentView = t.dataset.view;
+  ['grid','table','map','preflight'].forEach(v =>
+    $('view'+v[0].toUpperCase()+v.slice(1)).classList.toggle('hidden', v !== currentView));
+  renderCurrentView();
+});
+document.querySelectorAll('.filt').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.filt').forEach(x => x.classList.remove('solid'));
+  b.classList.add('solid'); filter = b.dataset.filt; renderCurrentView();
+});
+$('expAll').onclick  = () => download(toCSV(frames), 'occular-frame-check.csv');
+$('expFail').onclick = () => download(toCSV(frames.filter(f=>f.status!=='pass')), 'occular-failures.csv');
+$('expRaw').onclick  = () => download(toRawCSV(), 'occular-all-tags.csv');
+$('closeDrawer').onclick = () => $('drawer').classList.remove('open');
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('drawer').classList.remove('open'); });
+
+/* boot */
+rules = profile('locked');
+renderRuleEditor();
+</script>
+</body>
+</html>

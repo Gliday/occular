@@ -1,0 +1,15 @@
+# sample flight imagery stays out of the repo
+*.jpg
+*.jpeg
+*.JPG
+*.arw
+*.ARW
+*.dng
+*.nef
+*.cr2
+*.cr3
+*.tif
+*.tiff
+*.csv
+Thumbs.db
+desktop.ini
